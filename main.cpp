@@ -73,6 +73,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   auto coordinates3 = make_shared<rectangle>(200, 200, 500, 500);
   //auto imageFileName = make_shared<string>("/home/anthony/source/nanosvg/example/drawing.svg");
   auto imageFileName = make_shared<string>("/home/anthony/source/nanosvg/example/screenshot-2.png");
+//  auto imageFileName = make_shared<string>("plasma:fractal");
   vis.data().push_back(targetArea{coordinates3});
   vis.data().push_back(imageData{imageFileName});
   vis.data().push_back(drawImage{});

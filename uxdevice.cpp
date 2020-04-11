@@ -30,13 +30,18 @@ using namespace uxdevice;
 /**
 \internal
 \brief The routine iterates the display list moving
-parameters to the class
-meber communication areas.
+parameters to the class member communication areas.
 If processing is requested, the function operation
 is
 invoked.
 */
 void uxdevice::platform::render(void) {
+
+#if defined(USE_IMAGE_MAGICK)
+  m_offscreenImage.modifyImage();
+  Magick::Pixels view(m_offscreenImage);
+  m_offscreenBuffer = view.get(0,0,m_offscreenImage.columns(),m_offscreenImage.rows());
+#endif // defined
 
   for (auto &n : DL) {
     if (holds_alternative<stringData>(n)) {
@@ -75,6 +80,7 @@ void uxdevice::platform::render(void) {
     } else if (holds_alternative<drawText>(n)) {
       const size_t &beginIndex = *get<drawText>(n).beginIndex;
       const size_t &endIndex = *get<drawText>(n).endIndex;
+
       renderText(beginIndex, endIndex);
 
     } else if (holds_alternative<drawImage>(n)) {
@@ -82,6 +88,10 @@ void uxdevice::platform::render(void) {
       renderImage(src);
     }
   }
+
+#if defined(USE_IMAGE_MAGICK)
+  view.sync();
+#endif // defined
 }
 
 /**
@@ -319,6 +329,7 @@ uxdevice::platform::platform(const eventHandler &evtDispatcher) {
 
 #ifdef USE_IMAGE_MAGICK
   Magick::InitializeMagick("");
+
 #endif
 }
 /**
@@ -361,6 +372,10 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
                                     const unsigned short height) {
   _w = width;
   _h = height;
+
+#if defined(USE_IMAGE_MAGICK)
+  m_offscreenImage.size(Magick::Geometry(_w,_h));
+#endif // defined
 
 #if defined(USE_DIRECT_SCREEN_OUTPUT) && defined(__linux__)
   // this open provide interoperability between xcb and xwindows
@@ -1114,9 +1129,9 @@ int uxdevice::platform::renderChar(const char c) {
 #if defined(USE_IMAGE_MAGICK)
         Magick::Color destinationC = getPixel(i, j);
 
-        unsigned char destinationR = destinationC.quantumRed();
-        unsigned char destinationG = destinationC.quantumGreen();
-        unsigned char destinationB = destinationC.quantumBlue();
+        unsigned char destinationR = destinationC.quantumRed() / QuantumRange * 255;
+        unsigned char destinationG = destinationC.quantumGreen() / QuantumRange * 255;
+        unsigned char destinationB = destinationC.quantumBlue() / QuantumRange * 255;
 
 #else
         unsigned int destinationC = getPixel(i, j);
@@ -1176,7 +1191,6 @@ int uxdevice::platform::renderChar(const char c) {
 #endif
 
 void uxdevice::platform::renderImage(const rectangle &src) {
-  int destX, destY;
   int clampedWidth = 0;
   int clampedHeight = 0;
 
@@ -1184,6 +1198,7 @@ void uxdevice::platform::renderImage(const rectangle &src) {
   int targetHeight = m_targetArea->y2 - m_targetArea->y1;
 
 #if defined(USE_STB_IMAGE)
+  int destX, destY;
   if (*m_width > targetWidth) {
     clampedWidth = targetWidth;
   } else {
@@ -1218,7 +1233,9 @@ void uxdevice::platform::renderImage(const rectangle &src) {
   } else {
     clampedHeight = m_image->rows();
   }
-  m_offscreenBuffer.composite(*m_image,m_targetArea->x1,
+
+  m_image->crop(Magick::Geometry(clampedWidth,clampedHeight));
+  m_offscreenImage.composite(*m_image,m_targetArea->x1,
                               m_targetArea->y1,
                               Magick::CompositeOperator::CopyCompositeOp);
 #endif
@@ -1417,11 +1434,12 @@ void uxdevice::platform::drawCaret(const int x, const int y, const int h) {
 void uxdevice::platform::clear(void) {
 #if defined(USE_DIRECT_SCREEN_OUTPUT) && !defined(USE_IMAGE_MAGICK)
   fill(m_offscreenBuffer.begin(), m_offscreenBuffer.end(), 0xFF);
+
 #elif defined(USE_IMAGE_MAGICK)
-  m_offscreenBuffer = Magick::Image( Magick::Geometry(_w, _h),
-                                      Magick::Color(QuantumRange,
-                                                    QuantumRange,
-                                                    QuantumRange,0));
+  m_offscreenImage.strokeColor("white"); // Outline color
+  m_offscreenImage.fillColor("white"); // Fill color
+  m_offscreenImage.strokeWidth(0);
+  m_offscreenImage.draw( Magick::DrawableRectangle(0,0, m_offscreenImage.columns(),m_offscreenImage.rows()));
 #endif // defined
 
   m_xpos = 0;
@@ -1458,21 +1476,22 @@ void uxdevice::platform::putPixel(const int x, const int y,
 #elif defined(USE_IMAGE_MAGICK)
 void uxdevice::platform::putPixel(const int x, const int y,
                                   const Magick::Color color) {
-                                    #if 0
 
-  Magick::Pixels view(m_offscreenBuffer);
-  m_offscreenBuffer.modifyImage();
-  Magick::Quantum *pixels = view.get(x,y,1,1);
-  *pixels=color.quantumRed();
-  pixels++;
-  *pixels=color.quantumGreen();
-  pixels++;
-  *pixels=color.quantumBlue();
-  pixels++;
-  m_offscreenBuffer.syncPixels();
-  #endif // defined
+  if (x < 0 || y < 0)
+    return;
 
-  m_offscreenBuffer.pixelColor(x,y,color);
+  // clip coordinates
+  if (x >= _w || y >= _h)
+    return;
+
+  Magick::Quantum *p = &m_offscreenBuffer[x*4+y*_w*4];
+  *p=color.quantumRed();
+  p++;
+  *p=color.quantumGreen();
+  p++;
+  *p=color.quantumBlue();
+  p++;
+
 }
 #endif // defined
 
@@ -1504,7 +1523,15 @@ unsigned int uxdevice::platform::getPixel(const int x, const int y) {
 
 #elif defined(USE_IMAGE_MAGICK)
 Magick::Color uxdevice::platform::getPixel(const int x, const int y) {
-  return m_offscreenBuffer.pixelColor(x,y);
+  if (x < 0 || y < 0)
+    return Magick::Color("black");
+
+  // clip coordinates
+  if (x >= _w || y >= _h)
+    return Magick::Color("black");
+
+  Magick::Quantum *p = &m_offscreenBuffer[x*4+y*m_offscreenImage.columns()*4];
+  return Magick::Color(*p,*(p+1),*(p+2));
 }
 #endif // defined
 
@@ -1554,8 +1581,7 @@ void uxdevice::platform::resize(const int w, const int h) {
                         m_screen->root_depth, m_info.shmseg, 0);
 
 #if defined(USE_IMAGE_MAGICK)
-  m_offscreenBuffer.size(Magick::Geometry(_w,_h));
-
+  m_offscreenImage.extent(Magick::Geometry(_w,_h));
 #else
   m_offscreenBuffer.resize(_bufferSize);
 #endif // defined
@@ -1572,7 +1598,12 @@ void uxdevice::platform::resize(const int w, const int h) {
   _h = rc.bottom - rc.top;
 
   int _bufferSize = _w * _h * 4;
+
+#if defined(USE_IMAGE_MAGICK)
+  m_offscreenImage.extent(Magick::Geometry(_w,_h));
+#else
   m_offscreenBuffer.resize(_bufferSize);
+#endif // defined
 
   // clear to white
   clear();
@@ -1602,29 +1633,28 @@ void uxdevice::platform::flip() {
 #if defined(__linux__)
 
 #if defined(USE_IMAGE_MAGICK)
+
     // Allocate pixel view
-  Magick::Pixels view(m_offscreenBuffer);
+  Magick::Pixels view(m_offscreenImage);
+  unsigned int *p=reinterpret_cast<unsigned int *>(m_screenMemoryBuffer);
 
-  // Set all pixels in region anchored at 38x36, with size 160x230 to green.
   const Magick::Quantum *pixels = view.getConst(0,0,_w,_h);
-  for ( ssize_t row = 0; row < _h ; ++row )
-    for ( ssize_t column = 0; column < _w ; ++column )
-    {
-      unsigned char R,G,B;
-      R= *pixels/QuantumRange *255;
-      *pixels++;
-      G= *pixels/QuantumRange*255;
-      *pixels++;
-      B= *pixels/QuantumRange*255;
-      *pixels++;
-      //A
-      *pixels++;
 
-      unsigned int color=R<<16 | G << 8 | B;
-      unsigned int *p=reinterpret_cast<unsigned int *>(&m_screenMemoryBuffer[row*_w*4 + column*4]);
-      *p = color;
+  for(std::size_t x=0;x<_h*_w;x++)   {
+    unsigned char R,G,B;
+    R= static_cast<unsigned char>(*pixels/QuantumRange*255.0);
+    pixels++;
+    G= static_cast<unsigned char>(*pixels/QuantumRange*255.0);
+    pixels++;
+    B= static_cast<unsigned char>(*pixels/QuantumRange*255.0);
+    pixels++;
+    //A
+    pixels++;
 
-    }
+    *p = R<<16 | G << 8 | B;;
+    p++;
+  }
+
 #else
   // copy offscreen data to the shared memory video buffer
   memcpy(m_screenMemoryBuffer, m_offscreenBuffer.data(),

@@ -1,8 +1,9 @@
 CC=clang-9
 #CC=g++
-CFLAGS=-std=c++17 -Os
-INCLUDES=-I/projects/guidom `pkg-config --cflags freetype2 fontconfig`
-LFLAGS=`pkg-config --libs freetype2 xcb-image fontconfig`
+CFLAGS=-std=c++17 -Os `Magick++-config --cppflags --cxxflags`
+INCLUDES=-I/projects/guidom `pkg-config --cflags freetype2 fontconfig` -fexceptions
+
+LFLAGS=`pkg-config --libs freetype2 xcb-image fontconfig` `Magick++-config --ldflags --libs`
 
 debug: CFLAGS += -g
 debug: vis.out

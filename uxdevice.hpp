@@ -43,16 +43,6 @@ options when compiling the source.
 #define USE_FREETYPE
 
 
-
-
-/**
-\def USE_IMAGE_MAGICK
-\brief the ImageMagick library is used for image
- * loading and processing.
-
-*/
-//#define USE_IMAGE_MAGICK
-
 /**
 \def USE_GREYSCALE_ANTIALIAS
 \brief Use the freetype greyscale rendering. The Option is only for use with the
@@ -70,10 +60,18 @@ against the USE_GREYSCALE_ANTIALIAS option. One one should be defined.
 
 
 /**
+\def USE_IMAGE_MAGICK
+\brief the ImageMagick library is used for image
+ * loading and processing.
+
+*/
+#define USE_IMAGE_MAGICK
+
+/**
 \def USE_STB_IMAGE
 \brief the stb_image file loader is used.
 */
-#define USE_STB_IMAGE
+//#define USE_STB_IMAGE
 
 /**
 \def USE_CHROMIUM_EMBEDDED_FRAMEWORK
@@ -121,6 +119,7 @@ typedef unsigned char u_int8_t;
 #include <utility>
 #include <variant>
 #include <vector>
+#include <assert.h>
 
 /*************************************
 OS SPECIFIC HEADERS
@@ -491,7 +490,9 @@ private:
 
 
 #elif defined(USE_IMAGE_MAGICK)
-  Magick::Image m_offscreenBuffer;
+  Magick::Image m_offscreenImage;
+  Magick::Quantum *m_offscreenBuffer;
+
 
 #endif
 
