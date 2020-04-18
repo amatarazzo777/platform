@@ -1,16 +1,9 @@
 /**
 \author Anthony Matarazzo
-\file viewManager.hpp
+\file uxdevice.hpp
 \date 11/19/19
 \version 1.0
-\brief Header file that implements the document object model interface.
-The attributes, Element base class, and document entities are defined within
-the file. The enumeration values for object options as well as the event class
-are defined here. Within this file, several preprocessor macros exist that
-simplify and document the code base. Based upon the environment of the compiler,
-several platform specific header files are included. However all of the
-platform OS code is only coded within the platform object. The system exists
-within the viewManager namespace.
+\brief interface for the platform.
 */
 #pragma once
 
@@ -26,39 +19,6 @@ options when compiling the source.
 #define DEFAULT_TEXTSIZE 12
 #define DEFAULT_TEXTCOLOR 0
 
-
-
-/**
-\def USE_DIRECT
-\brief The system will use XCB for screen output
-*/
-#define USE_DIRECT_SCREEN_OUTPUT
-#define USE_SDL_SCREEN_OUTPUT
-
-
-/**
-\def USE_FREETYPE
-\brief 1The system will be configured to use the freetype library intrinsically.
-*/
-#define USE_FREETYPE
-
-
-/**
-\def USE_GREYSCALE_ANTIALIAS
-\brief Use the freetype greyscale rendering. The Option is only for use with the
-inline render. Use this option or the USE_LCD_FILTER. One one should be defined.
-*/
-//#define USE_FREETYPE_GREYSCALE_ANTIALIAS
-
-/**
-\def USE_LCD_FILTER
-\brief The system must be configured to use the inline renderer. This uses the
-lcd filtering mode of the freetype glyph library. The option is exclusive
-against the USE_GREYSCALE_ANTIALIAS option. One one should be defined.
-*/
-#define USE_FREETYPE_LCD_FILTER
-
-
 /**
 \def USE_IMAGE_MAGICK
 \brief the ImageMagick library is used for image
@@ -66,12 +26,6 @@ against the USE_GREYSCALE_ANTIALIAS option. One one should be defined.
 
 */
 #define USE_IMAGE_MAGICK
-
-/**
-\def USE_STB_IMAGE
-\brief the stb_image file loader is used.
-*/
-//#define USE_STB_IMAGE
 
 /**
 \def USE_CHROMIUM_EMBEDDED_FRAMEWORK
@@ -90,7 +44,9 @@ against the USE_GREYSCALE_ANTIALIAS option. One one should be defined.
 typedef unsigned char u_int8_t;
 #endif
 
+#include <assert.h>
 #include <cctype>
+#include <chrono>
 #include <climits>
 #include <cmath>
 #include <cstdarg>
@@ -105,6 +61,7 @@ typedef unsigned char u_int8_t;
 #include <iterator>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -119,7 +76,6 @@ typedef unsigned char u_int8_t;
 #include <utility>
 #include <variant>
 #include <vector>
-#include <assert.h>
 
 /*************************************
 OS SPECIFIC HEADERS
@@ -133,9 +89,8 @@ OS SPECIFIC HEADERS
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/keysymdef.h>
-#include <fontconfig/fontconfig.h>
-#include <xcb/shm.h>
-#include <xcb/xcb_image.h>
+
+#include <sys/types.h>
 #include <xcb/xcb_keysyms.h>
 
 #elif defined(_WIN64)
@@ -159,17 +114,17 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 #endif
 
-#ifdef USE_FREETYPE
-#include "ft2build.h"
-#include FT_FREETYPE_H
-#include FT_CACHE_H
-#include FT_SIZES_H
-#endif
-
 #ifdef USE_IMAGE_MAGICK
 #include <Magick++.h>
-
 #endif // image processing
+
+#include <cairo-xcb.h>
+#include <cairo.h>
+#include <pango/pangocairo.h>
+
+std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
+                         std::string cond, std::string ecode);
+typedef std::function<void(const std::string &err)> errorHandler;
 
 namespace uxdevice {
 
@@ -247,6 +202,16 @@ public:
     mousey = h;
     bVirtualKey = false;
   }
+
+  event(const eventType &et, const short &_x, const short &_y, const short &w,
+        const short &h) {
+    evtType = et;
+    x = _x;
+    y = _y;
+    width = w;
+    height = h;
+    bVirtualKey = false;
+  }
   event(const eventType &et, const short &distance) {
     evtType = et;
     wheelDistance = distance;
@@ -266,83 +231,12 @@ public:
   short width;
   short height;
   short wheelDistance;
+  short x, y;
 };
 
 /**
  \details
 */
-
-using rectangle = class rectangle {
-public:
-  rectangle(int _x1, int _y1, int _x2, int _y2)
-      : x1(_x1), y1(_y1), x2(_x2), y2(_y2) {}
-  int x1;
-  int y1;
-  int x2;
-  int y2;
-};
-
-using stringData = class stringData {
-public:
-  std::shared_ptr<std::string> data;
-  bool bWordBreaks = true;
-};
-
-using imageData = class imageData {
-public:
-  imageData(std::shared_ptr<int> _width, std::shared_ptr<int> _height,
-            std::shared_ptr<std::vector<u_int8_t>> _data);
-  imageData(std::shared_ptr<std::string> _fileName);
-
-#if defined(USE_STB_IMAGE)
-  std::shared_ptr<int> width;
-  std::shared_ptr<int> height;
-  std::shared_ptr<std::vector<u_int8_t>> data;
-
-#elif defined(USE_IMAGE_MAGICK)
-  std::shared_ptr<Magick::Image> data;
-#endif
-
-  std::shared_ptr<std::string> fileName;
-};
-
-using textFace = class textFace {
-public:
-  std::shared_ptr<std::string> data;
-  std::shared_ptr<int> pointSize;
-};
-
-using textColor = class textColor {
-public:
-  std::shared_ptr<unsigned int> data;
-};
-using textAlignment = class textAlignment {
-public:
-  std::shared_ptr<char> data;
-};
-
-using targetArea = class targetArea {
-public:
-  std::shared_ptr<rectangle> data;
-};
-
-using catchEvent = class catchEvent {
-public:
-  std::shared_ptr<eventHandler> data;
-};
-using drawText = class drawText {
-public:
-  std::shared_ptr<std::size_t> beginIndex;
-  std::shared_ptr<std::size_t> endIndex;
-};
-using drawImage = class drawImage {
-public:
-  std::shared_ptr<rectangle> src;
-};
-
-typedef std::variant<stringData, imageData, textFace, textColor, textAlignment,
-                     targetArea, catchEvent, drawText, drawImage>
-    displayListType;
 
 /**
 \internal
@@ -352,183 +246,259 @@ local operating system.
 */
 class platform {
 public:
-  platform(const eventHandler &evtDispatcher);
+  platform(const eventHandler &evtDispatcher, const errorHandler &fn);
   ~platform();
   void openWindow(const std::string &sWindowTitle, const unsigned short width,
                   const unsigned short height);
   void closeWindow(void);
 
-  std::vector<displayListType> &data(void);
-  void dirty(std::size_t idx) { m_dirty.push_back(idx); }
-  int pixelWidth(std::size_t idx) { return 0; }
-  int pixelHeight(std::size_t idx) { return 0; }
-  void render();
+  void render(const event &evt);
   void processEvents(void);
   void dispatchEvent(const event &e);
-  int measureTextWidth(const std::string &sTextFace, const int pointSize,
-                       const std::string &s);
-  int measureFaceHeight(const std::string &sTextFace, const int pointSize);
 
-private:
-  std::vector<displayListType> DL;
-  std::vector<std::size_t> m_dirty;
-  std::shared_ptr<rectangle> m_targetArea;
-  std::shared_ptr<std::string> m_stringData;
-
-#if defined(USE_STB_IMAGE)
-  std::shared_ptr<std::vector<u_int8_t>> m_imageData;
-  std::shared_ptr<int> m_width;
-  std::shared_ptr<int> m_height;
-
-#elif defined(USE_IMAGE_MAGICK)
-  std::shared_ptr<Magick::Image> m_image;
-
-#endif
-
-  std::shared_ptr<std::string> m_textFace;
-  std::shared_ptr<int> m_pointSize;
-
-#if defined(USE_DIRECT_SCREEN_OUTPUT)
-  std::shared_ptr<unsigned int> m_textColor;
-  unsigned char m_textColorR;
-  unsigned char m_textColorG;
-  unsigned char m_textColorB;
-  bool m_bProcessedOnce;
-
-#elif defined(USE_IMAGE_MAGICK)
-  std::shared_ptr<Magick::Color> m_textColor;
-#endif // defined
-
-  std::shared_ptr<char> m_textAlignment;
-
-  int m_xpos;
-  int m_ypos;
+  void clear(void);
+  void text(const std::string &s);
+  void text(const std::stringstream &s);
+  void image(const std::string &s);
+  void pen(u_int32_t c);
+  void fontDescription(const std::string &s);
+  void area(float x, float y, float w, float h);
+  void drawText(void);
+  void drawImage(void);
 
 private:
   void drawCaret(const int x, const int y, const int h);
 
-#if defined(USE_DIRECT_SCREEN_OUTPUT) && !defined(USE_IMAGE_MAGICK)
   inline void putPixel(const int x, const int y, const unsigned int color);
+  inline void putPixel(const int x, const int y, const unsigned char R,
+                       const unsigned char G, const unsigned char B);
   inline unsigned int getPixel(const int x, const int y);
 
-#elif defined(USE_IMAGE_MAGICK)
-  inline void putPixel(const int x, const int y,
-                                  const Magick::Color color);
-  inline Magick::Color getPixel(const int x, const int y);
-
-#endif // defined
-
-
-#if defined(USE_FREETYPE)
-  void activateTextFace(void);
-  void renderText(const std::size_t &beginIndex, const std::size_t &endIndex);
-  int renderChar(const char c);
-  inline FTC_FaceID getFaceID(std::string sTextFace);
-#endif // defined
-
-  void renderImage(const rectangle &src);
   void messageLoop(void);
   void test(int x, int y);
 
   void flip(void);
   void resize(const int w, const int h);
-  void clear(void);
 
-#if defined(USE_FREETYPE)
-  std::string getFontFilename(const std::string &sTextFace);
-#endif // defined
+#if defined(__linux__)
 
-
-#if defined(USE_DIRECT_SCREEN_OUTPUT) && defined(__linux__)
-
-#elif defined(USE_DIRECT_SCREEN_OUTPUT) && defined(_WIN64)
+#elif defined(_WIN64)
   static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam,
                                   LPARAM lParam);
   bool initializeVideo(void);
   void terminateVideo(void);
 #endif
 
-#if defined(USE_FREETYPE)
-  typedef struct {
-    std::string filePath;
-    int index;
-  } faceCacheStruct;
-
-  static FT_Error faceRequestor(FTC_FaceID face_id, FT_Library library,
-                                FT_Pointer request_data, FT_Face *aface);
-
-#endif
-
 private:
-#if defined(USE_DIRECT_SCREEN_OUTPUT) && defined(__linux__)
-  Display *m_xdisplay;
-  xcb_connection_t *m_connection;
-  xcb_screen_t *m_screen;
-  xcb_drawable_t m_window;
-  xcb_gcontext_t m_graphics;
-  xcb_pixmap_t m_pix;
-  xcb_shm_segment_info_t m_info;
+  /**
+   \details
+  */
 
-  // xcb -- keyboard
-  xcb_key_symbols_t *m_syms;
-  uint32_t m_foreground;
-  u_int8_t *m_screenMemoryBuffer;
+  class DisplayUnitContext;
+  enum contextUnitIndex : std::size_t {
+    AREA_idx,
+    STRING_idx,
+    IMAGE_idx,
+    FONT_idx,
+    PEN_idx,
+    ALIGN_idx,
+    EVENT_idx,
+    DRAWTEXT_idx,
+    DRAWIMAGE_idx,
 
-#elif defined(USE_DIRECT_SCREEN_OUTPUT) && defined(_WIN64)
-  HWND m_hwnd;
+    MAX
 
-  ID2D1Factory *m_pD2DFactory;
-  ID2D1HwndRenderTarget *m_pRenderTarget;
-  ID2D1Bitmap *m_pBitmap;
+  };
+
+  using DisplayUnit = class DisplayUnit {
+  public:
+    virtual std::size_t index() = 0;
+    // friend class platform;
+    virtual void invoke(const DisplayUnitContext &context) = 0;
+  };
+
+  using AREA = class AREA : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::AREA_idx; }
+    AREA(void) {}
+    AREA(float _x, float _y, float _w, float _h) : x(_x), y(_y), w(_w), h(_h) {}
+    float x = 0.0, y = 0.0, w = 0.0, h = 0.0;
+    void invoke(const DisplayUnitContext &context);
+  };
+
+  using STRING = class STRING : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::STRING_idx; }
+    constexpr static std::size_t id = 3;
+    STRING(const std::string &s) : data(s) {}
+    std::string data;
+    void invoke(const DisplayUnitContext &context);
+  };
+
+  using IMAGE = class IMAGE : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::IMAGE_idx; }
+    IMAGE(const std::string &_fileName) : fileName(_fileName) {}
+
+    cairo_surface_t *surface = nullptr;
+
+#if defined(USE_IMAGE_MAGICK)
+    Magick::Image data = nullptr;
+#endif
+    void invoke(const DisplayUnitContext &context);
+
+    std::string fileName;
+  };
+
+  using FONT = class FONT : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::FONT_idx; }
+    FONT(const std::string &s)
+        : data(s), pointSize(0.0), bProvidedName(false), bProvidedSize(false),
+          bProvidedDescription(true) {}
+    FONT(const std::string &s, const float &pt) : data(s), pointSize(pt) {}
+
+    std::string data = DEFAULT_TEXTFACE;
+    float pointSize = DEFAULT_TEXTSIZE;
+    bool bProvidedName = false;
+    bool bProvidedSize = false;
+    bool bProvidedDescription = false;
+    void invoke(const DisplayUnitContext &context);
+  };
+
+  using PEN = class PEN : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::PEN_idx; }
+    PEN(u_int32_t c) {
+      u_int8_t _r = c >> 16;
+      u_int8_t _g = c >> 8;
+      u_int8_t _b = c;
+
+      r = _r / 255.0;
+      g = _g / 255.0;
+      b = _b / 255.0;
+    }
+
+    PEN(float _r, float _g, float _b) {
+      r = _r;
+      g = _g;
+      b = _b;
+    }
+
+    PEN(const std::string &n){};
+    unsigned int data;
+    float r = 0.0, g = 0.0, b = 0.0, a = 0.0;
+    void invoke(const DisplayUnitContext &context);
+  };
+  using ALIGN = class ALIGN : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::ALIGN_idx; }
+    ALIGN(const char _aln) : a(_aln) {}
+    char a = 'l';
+    void invoke(const DisplayUnitContext &context);
+  };
+
+  using EVENT = class EVENT : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::EVENT_idx; }
+    EVENT(eventHandler _eh) : fn(_eh){};
+    eventHandler fn;
+    void invoke(const DisplayUnitContext &context);
+  };
+
+  using DRAWTEXT = class DRAWTEXT : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::DRAWTEXT_idx; }
+    DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
+    DRAWTEXT(std::size_t _b, std::size_t _e)
+        : beginIndex(_b), endIndex(_e), bEntire(false) {}
+    std::size_t beginIndex = 0;
+    std::size_t endIndex = 0;
+    bool bEntire = true;
+    void invoke(const DisplayUnitContext &context);
+  };
+  using DRAWIMAGE = class DRAWIMAGE : public DisplayUnit {
+  public:
+    std::size_t index() { return contextUnitIndex::DRAWIMAGE_idx; }
+    DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
+    DRAWIMAGE(void) {}
+    void invoke(const DisplayUnitContext &context);
+
+  private:
+    AREA src;
+    bool bEntire = true;
+  };
+
+  class DisplayUnitContext {
+  public:
+    std::array<DisplayUnit *, contextUnitIndex::MAX> currentUnit;
+
+    DisplayUnitContext(void) {
+      std::fill(currentUnit.begin(),currentUnit.end(),nullptr);
+    }
+
+    #define INDEXED_ACCESSOR(NAME) \
+    platform:: NAME * NAME (void) const {\
+      return dynamic_cast<platform:: NAME *>(currentUnit[contextUnitIndex:: NAME##_idx]); \
+    }
+
+    INDEXED_ACCESSOR(AREA);
+    INDEXED_ACCESSOR(STRING);
+    INDEXED_ACCESSOR(IMAGE);
+    INDEXED_ACCESSOR(FONT);
+    INDEXED_ACCESSOR(PEN);
+    INDEXED_ACCESSOR(ALIGN);
+    INDEXED_ACCESSOR(EVENT);
+    INDEXED_ACCESSOR(DRAWTEXT);
+    INDEXED_ACCESSOR(DRAWIMAGE);
+
+    short windowX = 0;
+    short windowY = 0;
+    unsigned short windowWidth = 0;
+    unsigned short windowHeight = 0;
+
+#if defined(__linux__)
+    bool windowOpen = false;
+    Display *xdisplay = nullptr;
+    xcb_connection_t *connection = nullptr;
+    xcb_screen_t *screen = nullptr;
+    xcb_drawable_t window = 0;
+    xcb_gcontext_t graphics = 0;
+
+    xcb_visualtype_t *visualType = nullptr;
+
+    // xcb -- keyboard
+    xcb_key_symbols_t *syms = nullptr;
+
+    cairo_surface_t *xcbSurface = nullptr;
+    cairo_t *cr = nullptr;
+    cairo_surface_t *rootImage = nullptr;
+
+#if defined(_WIN64)
+    HWND hwnd = 0;
+
+    ID2D1Factory *pD2DFactory = nullptr;
+    ID2D1HwndRenderTarget *pRenderTarget = nullptr;
+    ID2D1Bitmap *pBitmap = nullptr;
 
 #endif
-
-  int fontScale;
-
-#if defined(USE_DIRECT_SCREEN_OUTPUT) && !defined(USE_IMAGE_MAGICK)
-  std::vector<u_int8_t> m_offscreenBuffer;
-
 
 #elif defined(USE_IMAGE_MAGICK)
-  Magick::Image m_offscreenImage;
-  Magick::Quantum *m_offscreenBuffer;
-
+    Magick::Image offscreenImage;
+    Magick::Quantum *offscreenBuffer = nullptr;
 
 #endif
 
+    void set(DisplayUnit *_ptr) { currentUnit[_ptr->index()] = _ptr; }
+  };
+
+  DisplayUnitContext context;
+
 private:
+  errorHandler fnError;
   eventHandler fnEvents;
+  std::vector<std::unique_ptr<DisplayUnit>> DL;
 
-  unsigned short _w;
-  unsigned short _h;
-
-#if defined(USE_FREETYPE)
-  FT_Library m_freeType;
-  FTC_Manager m_cacheManager;
-
-#if defined(USE_FREETYPE_LCD_FILTER)
-  FTC_ImageCache m_imageCache;
-
-#elif defined(USE_FREETYPE_GREYSCALE_ANTIALIAS)
-  FTC_SBitCache m_bitCache;
-#endif
-
-  FTC_CMapCache m_cmapCache;
-  std::unordered_map<std::string, faceCacheStruct> m_faceCache;
-  typedef std::unordered_map<std::string, faceCacheStruct>::iterator
-      faceCacheIterator;
-
-  FT_Error m_error;
-  FTC_ScalerRec m_scaler;
-
-  FT_Size m_sizeFace;
-  FT_UInt m_glyph_index = 0;
-  FT_UInt m_previous_index = 0;
-  FTC_FaceID m_faceID;
-  int m_faceHeight;
-#endif
-
-private:
   std::vector<eventHandler> onfocus;
   std::vector<eventHandler> onblur;
   std::vector<eventHandler> onresize;
@@ -545,7 +515,6 @@ private:
   std::vector<eventHandler> oncontextmenu;
   std::vector<eventHandler> onwheel;
 
-private:
   std::vector<eventHandler> &getEventVector(eventType evtType);
 };
 
