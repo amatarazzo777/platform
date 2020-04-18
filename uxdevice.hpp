@@ -28,6 +28,14 @@ options when compiling the source.
 #define USE_IMAGE_MAGICK
 
 /**
+\def USE_PANGO
+\brief THe pango text rendering library is used.
+If this is not used the base cairo text rendering functions are used.
+
+*/
+#define USE_PANGO
+
+/**
 \def USE_CHROMIUM_EMBEDDED_FRAMEWORK
 \brief The system will be configured to use the CEF system.
 */
@@ -120,7 +128,11 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 #include <cairo-xcb.h>
 #include <cairo.h>
+
+#if defined(USE_PANGO)
 #include <pango/pangocairo.h>
+#endif // defined
+
 
 std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
                          std::string cond, std::string ecode);
@@ -269,11 +281,6 @@ public:
 private:
   void drawCaret(const int x, const int y, const int h);
 
-  inline void putPixel(const int x, const int y, const unsigned int color);
-  inline void putPixel(const int x, const int y, const unsigned char R,
-                       const unsigned char G, const unsigned char B);
-  inline unsigned int getPixel(const int x, const int y);
-
   void messageLoop(void);
   void test(int x, int y);
 
@@ -312,8 +319,8 @@ private:
 
   using DisplayUnit = class DisplayUnit {
   public:
+    virtual ~DisplayUnit() {}
     virtual std::size_t index() = 0;
-    // friend class platform;
     virtual void invoke(const DisplayUnitContext &context) = 0;
   };
 
@@ -322,6 +329,7 @@ private:
     std::size_t index() { return contextUnitIndex::AREA_idx; }
     AREA(void) {}
     AREA(float _x, float _y, float _w, float _h) : x(_x), y(_y), w(_w), h(_h) {}
+    ~AREA() {}
     float x = 0.0, y = 0.0, w = 0.0, h = 0.0;
     void invoke(const DisplayUnitContext &context);
   };
@@ -331,6 +339,7 @@ private:
     std::size_t index() { return contextUnitIndex::STRING_idx; }
     constexpr static std::size_t id = 3;
     STRING(const std::string &s) : data(s) {}
+    ~STRING() {}
     std::string data;
     void invoke(const DisplayUnitContext &context);
   };
@@ -339,7 +348,10 @@ private:
   public:
     std::size_t index() { return contextUnitIndex::IMAGE_idx; }
     IMAGE(const std::string &_fileName) : fileName(_fileName) {}
-
+    ~IMAGE() {
+      if (surface)
+        cairo_surface_destroy(surface);
+    }
     cairo_surface_t *surface = nullptr;
 
 #if defined(USE_IMAGE_MAGICK)
@@ -354,15 +366,28 @@ private:
   public:
     std::size_t index() { return contextUnitIndex::FONT_idx; }
     FONT(const std::string &s)
-        : data(s), pointSize(0.0), bProvidedName(false), bProvidedSize(false),
-          bProvidedDescription(true) {}
-    FONT(const std::string &s, const float &pt) : data(s), pointSize(pt) {}
+        : description(s), pointSize(DEFAULT_TEXTSIZE), bProvidedName(false),
+          bProvidedSize(false), bProvidedDescription(true) {}
+    FONT(const std::string &s, const float &pt)
+        : description(s), pointSize(pt) {}
+    ~FONT() {
 
-    std::string data = DEFAULT_TEXTFACE;
+#if defined(USE_PANGO)
+      if (fontDescription)
+        pango_font_description_free(fontDescription);
+#endif // defined
+
+    }
+    std::string description = DEFAULT_TEXTFACE;
     float pointSize = DEFAULT_TEXTSIZE;
     bool bProvidedName = false;
     bool bProvidedSize = false;
     bool bProvidedDescription = false;
+
+#if defined(USE_PANGO)
+    PangoFontDescription *fontDescription = nullptr;
+#endif // defined
+
     void invoke(const DisplayUnitContext &context);
   };
 
@@ -386,6 +411,7 @@ private:
     }
 
     PEN(const std::string &n){};
+    ~PEN() {}
     unsigned int data;
     float r = 0.0, g = 0.0, b = 0.0, a = 0.0;
     void invoke(const DisplayUnitContext &context);
@@ -394,6 +420,7 @@ private:
   public:
     std::size_t index() { return contextUnitIndex::ALIGN_idx; }
     ALIGN(const char _aln) : a(_aln) {}
+    ~ALIGN() {}
     char a = 'l';
     void invoke(const DisplayUnitContext &context);
   };
@@ -402,6 +429,7 @@ private:
   public:
     std::size_t index() { return contextUnitIndex::EVENT_idx; }
     EVENT(eventHandler _eh) : fn(_eh){};
+    ~EVENT() {}
     eventHandler fn;
     void invoke(const DisplayUnitContext &context);
   };
@@ -412,9 +440,19 @@ private:
     DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
     DRAWTEXT(std::size_t _b, std::size_t _e)
         : beginIndex(_b), endIndex(_e), bEntire(false) {}
+    ~DRAWTEXT() {
+#if defined(USE_PANGO)
+      if (layout)
+        g_object_unref(layout);
+#endif
+    }
     std::size_t beginIndex = 0;
     std::size_t endIndex = 0;
     bool bEntire = true;
+#if defined(USE_PANGO)
+    PangoLayout *layout = nullptr;
+#endif // defined
+
     void invoke(const DisplayUnitContext &context);
   };
   using DRAWIMAGE = class DRAWIMAGE : public DisplayUnit {
@@ -422,6 +460,7 @@ private:
     std::size_t index() { return contextUnitIndex::DRAWIMAGE_idx; }
     DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
     DRAWIMAGE(void) {}
+    ~DRAWIMAGE() {}
     void invoke(const DisplayUnitContext &context);
 
   private:
@@ -434,13 +473,18 @@ private:
     std::array<DisplayUnit *, contextUnitIndex::MAX> currentUnit;
 
     DisplayUnitContext(void) {
-      std::fill(currentUnit.begin(),currentUnit.end(),nullptr);
+      std::fill(currentUnit.begin(), currentUnit.end(), nullptr);
     }
 
-    #define INDEXED_ACCESSOR(NAME) \
-    platform:: NAME * NAME (void) const {\
-      return dynamic_cast<platform:: NAME *>(currentUnit[contextUnitIndex:: NAME##_idx]); \
-    }
+#define INDEXED_ACCESSOR(NAME)                                                 \
+  inline platform::NAME *NAME(void) const {                                           \
+    return dynamic_cast<platform::NAME *>(                                     \
+        currentUnit[contextUnitIndex::NAME##_idx]);                            \
+  }                                                                            \
+  inline bool validate##NAME(void) const {                                            \
+    return dynamic_cast<platform::NAME *>(                                     \
+               currentUnit[contextUnitIndex::NAME##_idx]) != nullptr;          \
+  }
 
     INDEXED_ACCESSOR(AREA);
     INDEXED_ACCESSOR(STRING);
@@ -472,7 +516,7 @@ private:
 
     cairo_surface_t *xcbSurface = nullptr;
     cairo_t *cr = nullptr;
-    cairo_surface_t *rootImage = nullptr;
+    bool preclear = true;
 
 #if defined(_WIN64)
     HWND hwnd = 0;

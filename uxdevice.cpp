@@ -27,7 +27,6 @@ invoked.
 */
 void uxdevice::platform::render(const event &evt) {
   static size_t count = 0;
-  // if(count) return;
 
   count++;
 
@@ -35,21 +34,20 @@ void uxdevice::platform::render(const event &evt) {
       std::chrono::high_resolution_clock::now();
   std::chrono::system_clock::time_point start =
       std::chrono::high_resolution_clock::now();
+
   double dx = evt.x;
   double dy = evt.y;
   double dw = evt.width;
   double dh = evt.height;
 
-  cairo_t *cr;
-  cairo_rectangle(context.cr, 0, 0, context.windowWidth, context.windowHeight);
-  cairo_set_source_rgb(context.cr, 1, 0, 0);
-  cairo_fill(context.cr);
-  //cairo_push_group(context.cr);
-
-  cairo_set_operator(context.cr, CAIRO_OPERATOR_OVER);
-  // cairo_set_antialias(m_cr, CAIRO_ANTIALIAS_SUBPIXEL);
-
-  // cairo_surface_flush(m_surface);
+  cairo_push_group(context.cr);
+  if (context.preclear) {
+    cairo_set_source_rgb(context.cr, 1.0, 1.0, 1.0);
+    cairo_paint(context.cr);
+    context.preclear = false;
+  }
+  // cairo_set_operator(context.cr, CAIRO_OPERATOR_SOURCE);
+  cairo_set_antialias(context.cr, CAIRO_ANTIALIAS_SUBPIXEL);
 
   // cairo_set_operator(m_cr, CAIRO_OPERATOR_OVER);
   // cairo_set_antialias(m_cr, CAIRO_ANTIALIAS_SUBPIXEL);
@@ -57,23 +55,43 @@ void uxdevice::platform::render(const event &evt) {
   for (auto &n : DL) {
     context.set(n.get());
     n->invoke(context);
+
+    if (cairo_status(context.cr)) {
+      std::stringstream sError;
+      sError << "ERR_CAIRO render loop "
+             << "  " << __FILE__ << " " << __func__;
+      throw std::runtime_error(sError.str());
+    }
   }
+
   dx = 0;
   dy = 0;
   dw = context.windowWidth;
   dh = context.windowHeight;
 
+  cairo_pop_group_to_source(context.cr);
+  cairo_paint(context.cr);
+
+#if 0
+  cairo_fill(context.cr);
+    cairo_rectangle(context.cr, 100,100,200,200);
+  cairo_stroke(context.cr);
+  // cairo_set_operator(xcbcr, CAIRO_OPERATOR_OVER);
+  cairo_set_source_rgb (context.rootcr, 1.0, 1.0, 1.0);
+  cairo_paint(context.rootcr);
+
+  cairo_set_source_surface (context.rootcr, context.rootImage, 0,0);
+  cairo_paint(context.rootcr);
+#endif
+
+  cairo_surface_flush(context.xcbSurface);
+  // cairo_surface_write_to_png (context.xcbSurface, "test.png");
+  xcb_flush(context.connection);
+
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
 
-//  cairo_pop_group_to_source(context.cr);
-  cairo_set_operator(context.cr, CAIRO_OPERATOR_SOURCE);
-
-  cairo_paint(context.cr);
-  cairo_surface_flush(context.xcbSurface);
-
   lastTime = std::chrono::high_resolution_clock::now();
-  // count--;`
 }
 
 /**
@@ -98,6 +116,7 @@ void uxdevice::platform::dispatchEvent(const event &evt) {
   } break;
   case eventType::resize:
     resize(evt.width, evt.height);
+    break;
   case eventType::keydown: {
 
   } break;
@@ -305,7 +324,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
   context.window = context.screen->root;
   context.graphics = xcb_generate_id(context.connection);
   uint32_t mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
-  uint32_t values[2] = {context.screen->black_pixel, 0};
+  uint32_t values[] = {context.screen->black_pixel, 0};
   xcb_create_gc(context.connection, context.graphics, context.window, mask,
                 values);
 
@@ -322,21 +341,26 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
   /* Create a window */
   context.window = xcb_generate_id(context.connection);
   mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-  // mask = XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
+  mask = XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
+  mask = XCB_CW_BACK_PIXMAP | XCB_CW_BORDER_PIXEL | XCB_CW_BIT_GRAVITY |
+         XCB_CW_OVERRIDE_REDIRECT | XCB_CW_SAVE_UNDER | XCB_CW_EVENT_MASK;
 
-  values[0] = context.screen->white_pixel;
-  ;
-  values[1] = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS |
-              XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_POINTER_MOTION |
-              XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_BUTTON_PRESS |
-              XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+  uint32_t vals[] = {
+      XCB_BACK_PIXMAP_NONE,
+      // XCB_BACK_PIXMAP_PARENT_RELATIVE,
+      context.screen->black_pixel, XCB_GRAVITY_NORTH_WEST, 0, 1,
+      XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_KEY_PRESS |
+          XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_POINTER_MOTION |
+          XCB_EVENT_MASK_BUTTON_MOTION | XCB_EVENT_MASK_BUTTON_PRESS |
+          XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_STRUCTURE_NOTIFY};
+
 
   xcb_create_window(context.connection, XCB_COPY_FROM_PARENT, context.window,
                     context.screen->root, 0, 0,
                     static_cast<unsigned short>(context.windowWidth),
                     static_cast<unsigned short>(context.windowHeight), 0,
                     XCB_WINDOW_CLASS_INPUT_OUTPUT, context.screen->root_visual,
-                    mask, values);
+                    mask, vals);
   // set window title
   xcb_change_property(context.connection, XCB_PROP_MODE_REPLACE, context.window,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, sWindowTitle.size(),
@@ -381,18 +405,6 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
     throw std::runtime_error(sError.str());
   }
 
-  cairo_format_t format = CAIRO_FORMAT_ARGB32;
-
-  context.rootImage = cairo_image_surface_create(format, context.windowWidth,
-                                                 context.windowHeight);
-  if (!context.rootImage) {
-    closeWindow();
-    std::stringstream sError;
-    sError << "ERR_CAIRO "
-           << "  " << __FILE__ << " " << __func__;
-    throw std::runtime_error(sError.str());
-  }
-
   context.cr = cairo_create(context.xcbSurface);
   if (!context.cr) {
     closeWindow();
@@ -401,7 +413,11 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
+  cairo_set_source_rgb(context.cr, 0, 1.0, 1.0);
+  cairo_paint(context.cr);
 
+  cairo_surface_flush(context.xcbSurface);
+  xcb_flush(context.connection);
   context.windowOpen = true;
 
   return;
@@ -489,10 +505,7 @@ void uxdevice::platform::terminateVideo(void) {
 void uxdevice::platform::closeWindow(void) {
 
 #if defined(__linux__)
-  if (context.rootImage) {
-    cairo_surface_destroy(context.rootImage);
-    context.rootImage = nullptr;
-  }
+
   if (context.xcbSurface) {
     cairo_surface_destroy(context.xcbSurface);
     context.xcbSurface = nullptr;
@@ -667,6 +680,7 @@ void uxdevice::platform::messageLoop(void) {
   xcb_generic_event_t *xcbEvent;
   short int newWidth;
   short int newHeight;
+  bool bRequestResize = false;
 
   while ((xcbEvent = xcb_wait_for_event(context.connection))) {
     switch (xcbEvent->response_type & ~0x80) {
@@ -719,20 +733,29 @@ void uxdevice::platform::messageLoop(void) {
     } break;
     case XCB_EXPOSE: {
       xcb_expose_event_t *eev = (xcb_expose_event_t *)xcbEvent;
-      if (eev->count == 0)
+
+
+      if (eev->count == 0) {
+        if (bRequestResize) {
+          bRequestResize = false;
+          dispatchEvent(event{eventType::resize, newWidth, newHeight});
+        }
+
         dispatchEvent(
             event{eventType::paint, eev->x, eev->y, eev->width, eev->height});
+      }
     } break;
     case XCB_CONFIGURE_NOTIFY: {
       const xcb_configure_notify_event_t *cfgEvent =
           (const xcb_configure_notify_event_t *)xcbEvent;
+
       if (cfgEvent->window == context.window) {
         newWidth = cfgEvent->width;
         newHeight = cfgEvent->height;
         if ((newWidth != context.windowWidth ||
              newHeight != context.windowWidth) &&
             (newWidth > 0) && (newHeight > 0)) {
-          dispatchEvent(event{eventType::resize, newWidth, newHeight});
+          bRequestResize = true;
         }
       }
     }
@@ -748,7 +771,10 @@ void uxdevice::platform::messageLoop(void) {
 #endif
 }
 
-/***************************************************************************/
+/**
+\brief API interface, just data is passed.
+
+*/
 
 void uxdevice::platform::clear(void) { DL.clear(); }
 
@@ -803,6 +829,9 @@ void uxdevice::platform::STRING::invoke(const DisplayUnitContext &context) {}
 */
 void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
 
+  if (surface)
+    return;
+
 #if defined(USE_IMAGE_MAGICK)
 
   data = Magick::Image();
@@ -810,8 +839,8 @@ void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
   data.backgroundColor("None");
   data.read(context.IMAGE()->fileName);
 
-  //  Magick::Color bg_color = data->pixelColor(0,0);
-  //  data->transparent(bg_color);
+  Magick::Color bg_color = data.pixelColor(0,0);
+  data.transparent(bg_color);
 
   cairo_format_t format = CAIRO_FORMAT_ARGB32;
   int stride = cairo_format_stride_for_width(format, data.columns());
@@ -854,19 +883,29 @@ void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief The FONT object provides contextual font object for library.
 */
-void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {}
+void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {
+#if defined(USE_PANGO)
+  fontDescription = pango_font_description_from_string(description.data());
+
+#else
+  cairo_select_font_face (context.cr, description.data(), CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_font_size (context.cr, 32.0);
+
+#endif
+}
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief Sets the alignment on the textual layout. PANGO supported,
+
 */
 void uxdevice::platform::ALIGN::invoke(const DisplayUnitContext &context) {}
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief Maps the last event defined.
 */
 void uxdevice::platform::EVENT::invoke(const DisplayUnitContext &context) {}
 
@@ -874,126 +913,85 @@ void uxdevice::platform::EVENT::invoke(const DisplayUnitContext &context) {}
 \internal
 \brief The drawText function provides textual character rendering.
 */
-void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {}
+void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
+  // check the context before operating
+  if (!context.validateAREA() || !context.validateSTRING()) {
+    std::stringstream sError;
+    sError << "ERR_DRAWTEXT AREA or STRING not set. "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+#if defined USE_PANGO
 
-/**
-\internal
-\brief The drawText function provides textual character rendering.
-*/
-void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
+  layout = pango_cairo_create_layout(context.cr);
+  pango_layout_set_text(layout, context.STRING()->data.data(), -1);
+  pango_layout_set_font_description(layout, context.FONT()->fontDescription);
+  pango_cairo_update_layout(context.cr, layout);
+  // cairo_move_to(context.cr, context.AREA()->x, context.AREA()->y);
+  pango_cairo_show_layout(context.cr, layout);
 
-  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y, context.AREA()->w,
-                  context.AREA()->h);
-  cairo_set_source_surface(context.cr, context.IMAGE()->surface, context.AREA()->x,
-                           context.AREA()->y);
-  cairo_fill(context.cr);
-  cairo_paint(context.cr);
+  g_object_unref(layout);
+  layout=nullptr;
+
+#else
+  cairo_show_text(context.cr, context.STRING()->data.data());
+#endif
 }
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief The function draws the image
+*/
+void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
+  // check the context before operating
+  if (!context.validateAREA() || !context.validateIMAGE()) {
+    std::stringstream sError;
+    sError << "ERR_DRAWIMAGE AREA or IMAGE not set. "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+
+  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
+                  context.AREA()->w, context.AREA()->h);
+  cairo_set_source_surface(context.cr, context.IMAGE()->surface,
+                           context.AREA()->x, context.AREA()->y);
+  cairo_fill(context.cr);
+}
+
+/**
+\internal
+\brief The function invokes the color operation
 */
 void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
-  cairo_set_source_rgba(context.cr, r, g, b, a);
+  cairo_set_source_rgb(context.cr, r, g, b);
 }
 
 /**
   \internal
   \brief the function draws the cursor.
   */
-void uxdevice::platform::drawCaret(const int x, const int y, const int h) {
-  for (int j = y; j < y + h; j++)
-    putPixel(x, j, 0x00);
-}
+void uxdevice::platform::drawCaret(const int x, const int y, const int h) {}
 
 /**
-\brief The function places a color into the offscreen pixel buffer.
-    Coordinate start at 0,0, upper left.
-\param x - the left point of the pixel
-\param y - the top point of the pixel
-\param unsigned int color - the bgra color value
-
-*/
-void uxdevice::platform::putPixel(const int x, const int y,
-                                  const unsigned int color) {
-
-  if (x < 0 || y < 0)
-    return;
-
-  // clip coordinates
-  if (x >= context.windowWidth || y >= context.windowHeight)
-    return;
-
-  // calculate offset
-  int stride = cairo_image_surface_get_stride(context.rootImage);
-  unsigned int offset = x * 4 + y * stride;
-
-  unsigned char *dataBuffer = cairo_image_surface_get_data(context.rootImage);
-
-  // put rgba color
-  unsigned int *p = reinterpret_cast<unsigned int *>(&dataBuffer[offset]);
-  *p = color;
-
-  // cairo_surface_mark_dirty(m_rootImage);
-  int xgrid = x / 64 * 64;
-  int ygrid = y / 64 * 64;
-
-  cairo_surface_mark_dirty_rectangle(context.rootImage, xgrid, ygrid, 10, 10);
-}
-
-/**
-\brief The function returns the color at the pixel space. Coordinate start
-at 0,0, upper left. \param x - the left point of the pixel \param y - the
-top point of the pixel \param unsigned int color - the bgra color value
-
-*/
-unsigned int uxdevice::platform::getPixel(const int x, const int y) {
-
-  // clip coordinates
-  if (x < 0 || y < 0)
-    return 0;
-
-  if (x >= context.windowWidth || y >= context.windowHeight)
-    return 0;
-
-  // calculate offset
-  int stride = cairo_image_surface_get_stride(context.rootImage);
-  unsigned int offset = x * 4 + y * stride;
-
-  unsigned char *dataBuffer = cairo_image_surface_get_data(context.rootImage);
-
-  // put rgba color
-  unsigned int *p = reinterpret_cast<unsigned int *>(&dataBuffer[offset]);
-
-  return *p;
-}
-
-/**
-\brief The function provides the reallocation of the offscreen buffer
+\brief The function resizes the surface, sets the preclear flag (used to
+   paint the entire surface a solid color before laying information on top,
+   and updates the context window sizes.
 
 */
 void uxdevice::platform::resize(const int w, const int h) {
 
+  context.windowWidth = w;
+  context.windowHeight = h;
+
 #if defined(__linux__)
   if (context.xcbSurface) {
-    if (w > cairo_image_surface_get_width(context.rootImage) ||
-        h > cairo_image_surface_get_height(context.rootImage)) {
-      cairo_surface_destroy(context.rootImage);
-      cairo_format_t format = CAIRO_FORMAT_ARGB32;
-      context.rootImage = cairo_image_surface_create(format, w, h);
-    }
-
     cairo_xcb_surface_set_size(context.xcbSurface, w, h);
-    cairo_surface_flush(context.xcbSurface);
+    context.preclear = true;
   }
 
-  context.windowWidth = w;
-  context.windowHeight = h;
+
 
 #elif defined(_WIN64)
-  context.windowWidth = w;
-  context.windowHeight = h;
 
   // get the size ofthe window
   RECT rc;
@@ -1032,9 +1030,9 @@ void uxdevice::platform::resize(const int w, const int h) {
 void uxdevice::platform::flip() {
 #if defined(__linux__)
 
-#if defined(USE_IMAGE_MAGICK)
+# if defined(USE_IMAGE_MAGICK)
 
-#endif // defiend
+# endif
 
 #elif defined(_WIN64)
   if (!context.pRenderTarget)
