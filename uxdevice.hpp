@@ -314,15 +314,17 @@ public:
   void blurChannel(const Magick::ChannelType channel_,
                    const double radius_ = 0.0, const double sigma_ = 1.0);
   void charcoal(const double radius_ = 1, const double sigma_ = 0.5);
-  void colorize(const unsigned int opacityRed_,
-                const unsigned int opacityGreen_,
-                const unsigned int opacityBlue_,
-                const Magick::Color &penColor_);
-  void contrast(size_t sharpen_);
+
+  void colorize(const unsigned int alpha_,const Magick::Color &penColor_);
+  void colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
+     const unsigned int alphaBlue_,const Magick::Color &penColor_);
+
+
+  void contrast(bool sharpen_);
   void cycleColormap(int amount_);
   void despeckle(void);
   void distort(const Magick::DistortMethod method,
-               const size_t number_arguments, const double *arguments,
+               const std::vector<double> &args,
                const bool bestfit = false);
   void equalize(void);
   void enhance(void);
@@ -337,7 +339,7 @@ public:
                   const double angle_);
   void negate(bool grayscale_ = false);
   void normalize(void);
-  void oilPaint(size_t radius_ = 3);
+  void oilPaint(const double radius_=3, const double sigma_=1);
   void raise(const Magick::Geometry &geometry_ = "6x6+0+0",
              bool raisedFlag_ = false);
   void shade(double azimuth_ = 30, double elevation_ = 30,
@@ -388,6 +390,7 @@ private:
 
     IMAGEPROCESS_idx,
     FUNCTION_idx,
+    IMAGECHAIN_idx,
 
     MAX_idx
 
@@ -421,24 +424,6 @@ private:
     ~STRING() {}
     std::string data;
     void invoke(const DisplayUnitContext &context);
-  };
-
-  using IMAGE = class IMAGE : public DisplayUnit {
-  public:
-    VIRTUAL_INDEX(IMAGE);
-    IMAGE(const std::string &_fileName) : fileName(_fileName) {}
-    ~IMAGE() {
-      if (surface)
-        cairo_surface_destroy(surface);
-    }
-    cairo_surface_t *surface = nullptr;
-
-#if defined(USE_IMAGE_MAGICK)
-    Magick::Image data = nullptr;
-#endif
-    void invoke(const DisplayUnitContext &context);
-
-    std::string fileName;
   };
 
   using FONT = class FONT : public DisplayUnit {
@@ -634,27 +619,45 @@ private:
     CAIRO_FUNCTION func;
   };
 
+  using IMAGE = class IMAGE : public DisplayUnit {
+  public:
+    enum ImageSystemType { none, cairo_type, magick_type };
+
+    VIRTUAL_INDEX(IMAGE);
+    IMAGE(const std::string &_fileName) : fileName(_fileName) {}
+    ~IMAGE() {
+      if (cairo)
+        cairo_surface_destroy(cairo);
+    }
+    cairo_surface_t *cairo = nullptr;
+
 #if defined(USE_IMAGE_MAGICK)
-  typedef std::function<void(Magick::Image img)> ImageFunction;
+    Magick::Image magick = nullptr;
+#endif
+    void invoke(const DisplayUnitContext &context);
+    void toCairo(void);
+    void toMagick(void);
+
+    std::string fileName;
+    bool bLoaded = false;
+    ImageSystemType type = ImageSystemType::none;
+  };
+
+#if defined(USE_IMAGE_MAGICK)
+  typedef std::function<void(Magick::Image *img)> ImageFunction;
 
   using IMAGEPROCESS = class IMAGEPROCESS : public DisplayUnit {
   public:
     VIRTUAL_INDEX(IMAGEPROCESS);
 
     IMAGEPROCESS(ImageFunction _func) : func(_func){};
-    ~IMAGEPROCESS() {
-      if (output)
-        cairo_surface_destroy(output);
-    }
+    ~IMAGEPROCESS() {}
 
     void invoke(const DisplayUnitContext &context);
 
-    const cairo_surface_t *input = nullptr;
-    cairo_surface_t *output = nullptr;
-    Magick::Image image;
-
   private:
     ImageFunction func;
+    bool bCompleted = false;
   };
 #endif
 

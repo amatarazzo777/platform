@@ -867,10 +867,7 @@ void uxdevice::platform::drawImage(void) {
 /**
 \brief
 */
-void uxdevice::platform::drawBox(void) {
- DL.push_back(make_unique<DRAWBOX>());
-}
-
+void uxdevice::platform::drawBox(void) { DL.push_back(make_unique<DRAWBOX>()); }
 
 /**
 \brief
@@ -971,25 +968,25 @@ void uxdevice::platform::rectangle(double x, double y, double width,
 // later, the actual image is placed within the call before invocation.
 void uxdevice::platform::addNoise(Magick::NoiseType noiseType_) {
   using namespace std::placeholders;
-  const double attenuate_=1.0;
-  ImageFunction func = std::bind(&Magick::Image::addNoise, _1, noiseType_,attenuate_);
+  const double attenuate_ = 1.0;
+  ImageFunction func =
+      std::bind(&Magick::Image::addNoise, _1, noiseType_, attenuate_);
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
 void uxdevice::platform::addNoiseChannel(const Magick::ChannelType channel_,
                                          const Magick::NoiseType noiseType_) {
   using namespace std::placeholders;
-  const double attenuate_=1.0;
-  ImageFunction func =
-      std::bind(&Magick::Image::addNoiseChannel, _1, channel_, noiseType_,attenuate_);
+  const double attenuate_ = 1.0;
+  ImageFunction func = std::bind(&Magick::Image::addNoiseChannel, _1, channel_,
+                                 noiseType_, attenuate_);
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
 void uxdevice::platform::blur(const double radius_, const double sigma_) {
   using namespace std::placeholders;
 
-  ImageFunction func =
-      std::bind(&Magick::Image::blur, _1, radius_, sigma_);
+  ImageFunction func = std::bind(&Magick::Image::blur, _1, radius_, sigma_);
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
@@ -1002,47 +999,173 @@ void uxdevice::platform::blurChannel(const Magick::ChannelType channel_,
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
-void uxdevice::platform::charcoal(const double radius_, const double sigma_) {}
+void uxdevice::platform::charcoal(const double radius_, const double sigma_) {
+  using namespace std::placeholders;
 
-void uxdevice::platform::colorize(const unsigned int opacityRed_,
-                                  const unsigned int opacityGreen_,
-                                  const unsigned int opacityBlue_,
-                                  const Magick::Color &penColor_) {}
+  // NOTE extract alpha channel and use it as a mask after image processing to
+  // maintain alpha transparency
 
-void uxdevice::platform::contrast(size_t sharpen_) {}
+  ImageFunction func = std::bind(&Magick::Image::charcoal, _1, radius_, sigma_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
 
-void uxdevice::platform::cycleColormap(int amount_) {}
+#if 0
+/******** forward ?? the reference cannot be sent using the bind method due to compilation issue.
+*/
+void uxdevice::platform::colorize(const unsigned int alpha_,const Magick::Color &penColor_) {
+  using namespace std::placeholders;
+  const Magick::Color c(penColor_);
+  ImageFunction func = std::bind(&Magick::Image::colorize, _1, alpha_, &c));
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
 
-void uxdevice::platform::despeckle(void) {}
+void uxdevice::platform::colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
+   const unsigned int alphaBlue_,const Magick::Color penColor_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::colorize, _1, alphaRed_,
+                                 alphaGreen_, alphaBlue_, penColor_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+#endif // 0
+void uxdevice::platform::colorize(const unsigned int alpha_,const Magick::Color &penColor_) {
+}
+
+void uxdevice::platform::colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
+   const unsigned int alphaBlue_,const Magick::Color &penColor_) {
+
+}
+
+void uxdevice::platform::contrast(bool sharpen_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::contrast, _1, sharpen_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::cycleColormap(int amount_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::cycleColormap, _1, amount_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::despeckle(void) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::despeckle, _1);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
 
 void uxdevice::platform::distort(const Magick::DistortMethod method,
-                                 const size_t number_arguments,
-                                 const double *arguments, const bool bestfit) {}
+                                 const std::vector<double> &args, const bool bestfit) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::distort, _1, method,
+                                 args.size(), args.data(), bestfit);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
 
-void uxdevice::platform::equalize(void) {}
-void uxdevice::platform::enhance(void) {}
+void uxdevice::platform::equalize(void) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::equalize, _1);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::enhance(void) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::enhance, _1);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::gaussianBlur(const double width_,
-                                      const double sigma_) {}
+                                      const double sigma_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::gaussianBlur, _1, width_, sigma_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::gaussianBlurChannel(const Magick::ChannelType channel_,
                                              const double radius_,
-                                             const double sigma_) {}
-void uxdevice::platform::implode(const double factor_) {}
-void uxdevice::platform::medianFilter(const double radius_) {}
+                                             const double sigma_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::gaussianBlurChannel, _1,
+                                 channel_, radius_,sigma_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::implode(const double factor_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::implode, _1, factor_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::medianFilter(const double radius_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::medianFilter, _1, radius_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::modulate(double brightness_, double saturation_,
-                                  double hue_) {}
+                                  double hue_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::modulate, _1, brightness_, saturation_, hue_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::motionBlur(const double radius_, const double sigma_,
-                                    const double angle_) {}
-void uxdevice::platform::negate(bool grayscale_) {}
-void uxdevice::platform::normalize(void) {}
-void uxdevice::platform::oilPaint(size_t radius_) {}
+                                    const double angle_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::motionBlur, _1, radius_, sigma_, angle_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::negate(bool grayscale_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::negate, _1, grayscale_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::normalize(void) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::normalize, _1);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
+void uxdevice::platform::oilPaint(const double radius_, const double sigma_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::oilPaint, _1, radius_,sigma_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::raise(const Magick::Geometry &geometry_,
-                               bool raisedFlag_) {}
+                               bool raisedFlag_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::raise, _1, geometry_, raisedFlag_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::shade(double azimuth_, double elevation_,
-                               bool colorShading_) {}
+                               bool colorShading_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::shade, _1, azimuth_, elevation_, colorShading_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+
 void uxdevice::platform::shadow(const double percent_opacity,
                                 const double sigma_, const ssize_t x_,
-                                const ssize_t y_) {}
-void uxdevice::platform::sharpen(const double radius_, const double sigma_) {}
+                                const ssize_t y_) {
+  using namespace std::placeholders;
+  ImageFunction func =
+      std::bind(&Magick::Image::shadow, _1, percent_opacity, sigma_, x_, y_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
+void uxdevice::platform::sharpen(const double radius_, const double sigma_) {
+  using namespace std::placeholders;
+  ImageFunction func = std::bind(&Magick::Image::sharpen, _1, radius_, sigma_);
+  DL.push_back(make_unique<IMAGEPROCESS>(func));
+}
 #endif // defined
 
 /***************************************************************************/
@@ -1060,64 +1183,6 @@ void uxdevice::platform::AREA::invoke(const DisplayUnitContext &context) {
 \brief The drawText function provides textual character rendering.
 */
 void uxdevice::platform::STRING::invoke(const DisplayUnitContext &context) {}
-
-/**
-\internal
-\brief The drawText function provides textual character rendering.
-*/
-void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
-
-  if (surface)
-    return;
-
-#if defined(USE_IMAGE_MAGICK)
-
-  data = Magick::Image();
-  data.type(Magick::TrueColorType);
-  data.backgroundColor("None");
-  data.read(context.IMAGE()->fileName);
-
-  Magick::Color bg_color = data.pixelColor(0, 0);
-  data.transparent(bg_color);
-
-  cairo_format_t format = CAIRO_FORMAT_ARGB32;
-  int stride = cairo_format_stride_for_width(format, data.columns());
-  unsigned char *surfacedata =
-      reinterpret_cast<unsigned char *>(malloc(stride * data.rows()));
-
-  Magick::Pixels view(data);
-
-  const Magick::Quantum *pixels =
-      view.getConst(0, 0, data.columns(), data.rows());
-
-  for (std::size_t y = 0; y < data.rows(); y++) {
-    unsigned int *pBuffer =
-        reinterpret_cast<unsigned int *>(surfacedata + y * stride);
-
-    for (std::size_t x = 0; x < data.columns(); x++) {
-      unsigned char R, G, B, A;
-      R = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      G = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      B = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      A = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-
-      *pBuffer = A << 24 | R << 16 | G << 8 | B;
-      pBuffer++;
-    }
-  }
-
-  surface = cairo_image_surface_create_for_data(
-      surfacedata, format, data.columns(), data.rows(), stride);
-
-#else
-  surface = cairo_image_surface_create_from_png(context.i.fileName.data());
-
-#endif // USE_IMAGE_MAGICK
-}
 
 /**
 \internal
@@ -1196,9 +1261,12 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-  cairo_set_source_surface(context.cr, context.IMAGE()->surface,
+  if (context.IMAGE()->type != IMAGE::ImageSystemType::cairo_type)
+    context.IMAGE()->toCairo();
+
+  cairo_set_source_surface(context.cr, context.IMAGE()->cairo,
                            context.AREA()->x, context.AREA()->y);
-  cairo_mask_surface(context.cr, context.IMAGE()->surface, context.AREA()->x,
+  cairo_mask_surface(context.cr, context.IMAGE()->cairo, context.AREA()->x,
                      context.AREA()->y);
 #if 0
   cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
@@ -1263,25 +1331,122 @@ void uxdevice::platform::BACKGROUND::invoke(const DisplayUnitContext &context) {
 }
 
 void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
-  auto fn = std::bind(func, context.cr);
-  fn();
+  func(context.cr);
 }
 
+/**
+\internal
+\brief The drawText function provides textual character rendering.
+*/
+void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
+  if (bLoaded)
+    return;
+
+#if defined(USE_IMAGE_MAGICK)
+
+  magick = Magick::Image();
+  magick.type(Magick::TrueColorType);
+  magick.backgroundColor("None");
+  magick.read(context.IMAGE()->fileName);
+  Magick::Color bg_color = magick.pixelColor(0, 0);
+  magick.transparent(bg_color);
+  type = ImageSystemType::magick_type;
+  cairo = nullptr;
+
+#else
+  cairo = cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
+  type = ImageSystemType::cairo_type;
+  magick = nullptr;
+
+#endif // USE_IMAGE_MAGICK
+  bLoaded = true;
+}
+
+void uxdevice::platform::IMAGE::toCairo(void) {
+  if (type != ImageSystemType::magick_type) {
+    std::stringstream sError;
+    sError << "ERR_ IMAGECHAIN no magick current image. "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+
+  cairo_format_t format = CAIRO_FORMAT_ARGB32;
+  int stride = cairo_format_stride_for_width(format, magick.columns());
+  unsigned char *surfacedata =
+      reinterpret_cast<unsigned char *>(malloc(stride * magick.rows()));
+  magick.type(Magick::TrueColorAlphaType);
+
+  Magick::Pixels view(magick);
+
+  const Magick::Quantum *pixels =
+      view.getConst(0, 0, magick.columns(), magick.rows());
+
+  for (std::size_t y = 0; y < magick.rows(); y++) {
+    unsigned int *pBuffer =
+        reinterpret_cast<unsigned int *>(surfacedata + y * stride);
+
+    for (std::size_t x = 0; x < magick.columns(); x++) {
+      unsigned char R, G, B, A;
+      R = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
+      pixels++;
+      G = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
+      pixels++;
+      B = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
+      pixels++;
+      A = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
+      pixels++;
+      *pBuffer = A << 24 | R << 16 | G << 8 | B;
+      pBuffer++;
+    }
+  }
+
+  cairo = cairo_image_surface_create_for_data(
+      surfacedata, format, magick.columns(), magick.rows(), stride);
+  type = ImageSystemType::cairo_type;
+  magick = nullptr;
+}
+
+void uxdevice::platform::IMAGE::toMagick(void) {
+  if (cairo == nullptr) {
+    std::stringstream sError;
+    sError << "ERR_ IMAGECHAIN no cairo current image. "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+
+  string sImageMap;
+  Magick::StorageType store;
+
+  switch (cairo_image_surface_get_format(cairo)) {
+  case CAIRO_FORMAT_ARGB32:
+    sImageMap = "ARGB";
+    store = Magick::StorageType::LongPixel;
+    break;
+  }
+
+  magick = Magick::Image(cairo_image_surface_get_width(cairo),
+                         cairo_image_surface_get_height(cairo), sImageMap,
+                         store, cairo_image_surface_get_data(cairo));
+
+  type = ImageSystemType::magick_type;
+  cairo_surface_destroy(cairo);
+  cairo = nullptr;
+}
+
+#if defined(USE_IMAGE_MAGICK)
 void uxdevice::platform::IMAGEPROCESS::invoke(
     const DisplayUnitContext &context) {
-#if 0
-    // check the context before operating
-    if (!context.validateLASTIMAGE()) {
-      std::stringstream sError;
-      sError << "ERR_ IMAGEPROCESS no current image. "
-             << "  " << __FILE__ << " " << __func__;
-      throw std::runtime_error(sError.str());
-    }
-#endif
+  if (bCompleted)
+    return;
 
-  auto fn = std::bind(func, image);
-  fn();
+  if (context.IMAGE()->type != IMAGE::ImageSystemType::magick_type)
+    context.IMAGE()->toMagick();
+
+  func(&context.IMAGE()->magick);
+
+  bCompleted = true;
 }
+#endif // defined
 
 /**
   \internal

@@ -37,7 +37,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   vis.clear();
 
-  vis.text("To summarize output logic by inspecting the means by which it is "
+vis.text("To summarize output logic by inspecting the means by which it is "
            "produced provides the capability to offer optimization.");
   vis.fontDescription("Arial normal 19");
   vis.area(0, 0, 500, 300);
@@ -49,6 +49,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.background(1, 1, 1);
   vis.pen(0x00);
   vis.drawText();
+
+
   vis.move_to(5,5);
   vis.line_to(300,250);
   vis.stroke();
@@ -75,16 +77,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.drawText();
 
   vis.image("/home/anthony/source/nanosvg/example/screenshot-2.png");
+  vis.charcoal();
+  vis.blur();
   vis.area(200, 200, 300, 500);
   vis.drawImage();
 
   vis.image("/home/anthony/source/nanosvg/example/draw.png");
   vis.area(500, 200, 900, 500);
+  vis.shadow(20, .5, 20, 20);
   vis.drawImage();
 
-vis.pen(0, 0, .2, .1);
-  vis.move_to(5,5);
-  vis.line_to(300,250);
+  vis.pen(0, 0, .2, .1);
+  vis.move_to(5, 5);
+  vis.line_to(300, 250);
   vis.stroke();
 
   vis.processEvents();
