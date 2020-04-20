@@ -36,40 +36,56 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.openWindow("Information Title", 800, 600);
 
   vis.clear();
+
   vis.text("To summarize output logic by inspecting the means by which it is "
            "produced provides the capability to offer optimization.");
+  vis.fontDescription("Arial normal 19");
+  vis.area(0, 0, 500, 300);
+
+  vis.pen(0, 0, .2, 1);
+  vis.background(0, 0, .5, .3);
+  vis.drawBox();
+
+  vis.background(1, 1, 1);
   vis.pen(0x00);
-  vis.fontDescription("Arial Bold 12");
-  vis.area(10, 10, 300, 300);
   vis.drawText();
+  vis.move_to(5,5);
+  vis.line_to(300,250);
+  vis.stroke();
 
   stringstream ss;
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < 30; i++) {
     ss << i
        << ". Through the progression of learning, better results can make an "
           "appearance\n";
   }
   vis.text(ss);
-  vis.area(30, 30, 600, 600);
+  vis.area(10, 100, 600, 600);
   vis.pen(0x000fff);
   vis.drawText();
 
-  ss.clear();
-  for (int i = 0; i < 50; i++) {
+  ss.str("");
+  for (int i = 0; i < 30; i++) {
     ss << i << ". A screen full of text is easily rendered.\n";
   }
+
   vis.text(ss);
-  vis.area(700, 30, 1000, 800);
-  vis.pen(0x00ffff);
+  vis.area(650, 30, 1000, 800);
+  vis.pen("brown");
   vis.drawText();
 
   vis.image("/home/anthony/source/nanosvg/example/screenshot-2.png");
-  vis.area(400, 200, 900, 500);
+  vis.area(200, 200, 300, 500);
   vis.drawImage();
 
   vis.image("/home/anthony/source/nanosvg/example/draw.png");
-  vis.area(700, 200, 900, 500);
+  vis.area(500, 200, 900, 500);
   vis.drawImage();
+
+vis.pen(0, 0, .2, .1);
+  vis.move_to(5,5);
+  vis.line_to(300,250);
+  vis.stroke();
 
   vis.processEvents();
 

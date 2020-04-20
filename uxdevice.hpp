@@ -41,6 +41,11 @@ If this is not used the base cairo text rendering functions are used.
 */
 //#define USE_CHROMIUM_EMBEDDED_FRAMEWORK
 
+/**
+\def USE_DEBUG_CONSOLE
+*/
+#define USE_DEBUG_CONSOLE
+
 /** @} */
 
 #include <algorithm>
@@ -132,7 +137,6 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #if defined(USE_PANGO)
 #include <pango/pangocairo.h>
 #endif // defined
-
 
 std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
                          std::string cond, std::string ecode);
@@ -273,10 +277,75 @@ public:
   void text(const std::stringstream &s);
   void image(const std::string &s);
   void pen(u_int32_t c);
+  void pen(double _r, double _g, double _b);
+  void pen(double _r, double _g, double _b, double _a);
+  void pen(const std::string &c);
+  void background(u_int32_t c);
+  void background(double _r, double _g, double _b);
+  void background(double _r, double _g, double _b, double _a);
+  void background(const std::string &c);
+
   void fontDescription(const std::string &s);
-  void area(float x, float y, float w, float h);
+  void area(double x, double y, double w, double h);
   void drawText(void);
   void drawImage(void);
+  void drawBox(void);
+
+  void translate(double x, double y);
+  void rotate(double angle);
+  void scale(double x, double y);
+
+  void arc(double xc, double yc, double radius, double angle1, double angle2);
+  void arc_negative(double xc, double yc, double radius, double angle1,
+                    double angle2);
+  void curve_to(double x1, double y1, double x2, double y2, double x3,
+                double y3);
+
+  void line_to(double x, double y);
+  void move_to(double x, double y);
+  void rectangle(double x, double y, double width, double height);
+  void stroke(void);
+
+#if defined(USE_IMAGE_MAGICK)
+  void addNoise(Magick::NoiseType noiseType_);
+  void addNoiseChannel(const Magick::ChannelType channel_,
+                       const Magick::NoiseType noiseType_);
+  void blur(const double radius_ = 1, const double sigma_ = 0.5);
+  void blurChannel(const Magick::ChannelType channel_,
+                   const double radius_ = 0.0, const double sigma_ = 1.0);
+  void charcoal(const double radius_ = 1, const double sigma_ = 0.5);
+  void colorize(const unsigned int opacityRed_,
+                const unsigned int opacityGreen_,
+                const unsigned int opacityBlue_,
+                const Magick::Color &penColor_);
+  void contrast(size_t sharpen_);
+  void cycleColormap(int amount_);
+  void despeckle(void);
+  void distort(const Magick::DistortMethod method,
+               const size_t number_arguments, const double *arguments,
+               const bool bestfit = false);
+  void equalize(void);
+  void enhance(void);
+  void gaussianBlur(const double width_, const double sigma_);
+  void gaussianBlurChannel(const Magick::ChannelType channel_,
+                           const double radius_ = 0.0,
+                           const double sigma_ = 1.0);
+  void implode(const double factor_);
+  void medianFilter(const double radius_ = 0.0);
+  void modulate(double brightness_, double saturation_, double hue_);
+  void motionBlur(const double radius_, const double sigma_,
+                  const double angle_);
+  void negate(bool grayscale_ = false);
+  void normalize(void);
+  void oilPaint(size_t radius_ = 3);
+  void raise(const Magick::Geometry &geometry_ = "6x6+0+0",
+             bool raisedFlag_ = false);
+  void shade(double azimuth_ = 30, double elevation_ = 30,
+             bool colorShading_ = false);
+  void shadow(const double percent_opacity = 80, const double sigma_ = 0.5,
+              const ssize_t x_ = 0, const ssize_t y_ = 0);
+  void sharpen(const double radius_ = 1, const double sigma_ = 0.5);
+#endif // defined
 
 private:
   void drawCaret(const int x, const int y, const int h);
@@ -302,42 +371,52 @@ private:
   */
 
   class DisplayUnitContext;
+#define IDX(NAME) platform::contextUnitIndex::NAME##_idx
+
   enum contextUnitIndex : std::size_t {
     AREA_idx,
     STRING_idx,
     IMAGE_idx,
     FONT_idx,
     PEN_idx,
+    BACKGROUND_idx,
     ALIGN_idx,
     EVENT_idx,
     DRAWTEXT_idx,
     DRAWIMAGE_idx,
+    DRAWBOX_idx,
 
-    MAX
+    IMAGEPROCESS_idx,
+    FUNCTION_idx,
+
+    MAX_idx
 
   };
+#define VIRTUAL_INDEX(NAME)                                                    \
+  inline std::size_t index(void) { return contextUnitIndex::NAME##_idx; }
 
   using DisplayUnit = class DisplayUnit {
   public:
-    virtual ~DisplayUnit() {}
     virtual std::size_t index() = 0;
+    virtual ~DisplayUnit() {}
     virtual void invoke(const DisplayUnitContext &context) = 0;
   };
 
   using AREA = class AREA : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::AREA_idx; }
+    VIRTUAL_INDEX(AREA);
+
     AREA(void) {}
-    AREA(float _x, float _y, float _w, float _h) : x(_x), y(_y), w(_w), h(_h) {}
+    AREA(double _x, double _y, double _w, double _h)
+        : x(_x), y(_y), w(_w), h(_h) {}
     ~AREA() {}
-    float x = 0.0, y = 0.0, w = 0.0, h = 0.0;
+    double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
     void invoke(const DisplayUnitContext &context);
   };
 
   using STRING = class STRING : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::STRING_idx; }
-    constexpr static std::size_t id = 3;
+    VIRTUAL_INDEX(STRING);
     STRING(const std::string &s) : data(s) {}
     ~STRING() {}
     std::string data;
@@ -346,7 +425,7 @@ private:
 
   using IMAGE = class IMAGE : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::IMAGE_idx; }
+    VIRTUAL_INDEX(IMAGE);
     IMAGE(const std::string &_fileName) : fileName(_fileName) {}
     ~IMAGE() {
       if (surface)
@@ -364,11 +443,12 @@ private:
 
   using FONT = class FONT : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::FONT_idx; }
+    VIRTUAL_INDEX(FONT);
+
     FONT(const std::string &s)
         : description(s), pointSize(DEFAULT_TEXTSIZE), bProvidedName(false),
           bProvidedSize(false), bProvidedDescription(true) {}
-    FONT(const std::string &s, const float &pt)
+    FONT(const std::string &s, const double &pt)
         : description(s), pointSize(pt) {}
     ~FONT() {
 
@@ -376,10 +456,9 @@ private:
       if (fontDescription)
         pango_font_description_free(fontDescription);
 #endif // defined
-
     }
     std::string description = DEFAULT_TEXTFACE;
-    float pointSize = DEFAULT_TEXTSIZE;
+    double pointSize = DEFAULT_TEXTSIZE;
     bool bProvidedName = false;
     bool bProvidedSize = false;
     bool bProvidedDescription = false;
@@ -391,34 +470,97 @@ private:
     void invoke(const DisplayUnitContext &context);
   };
 
-  using PEN = class PEN : public DisplayUnit {
+  using BASECOLOR = class BASECOLOR {
   public:
-    std::size_t index() { return contextUnitIndex::PEN_idx; }
-    PEN(u_int32_t c) {
+    BASECOLOR(u_int32_t c) {
       u_int8_t _r = c >> 16;
       u_int8_t _g = c >> 8;
       u_int8_t _b = c;
+      u_int8_t _a = c >> 24;
 
       r = _r / 255.0;
       g = _g / 255.0;
       b = _b / 255.0;
+      a = 1.0;
     }
 
-    PEN(float _r, float _g, float _b) {
+    BASECOLOR(double _r, double _g, double _b) {
       r = _r;
       g = _g;
       b = _b;
+      a = 1.0;
     }
 
-    PEN(const std::string &n){};
-    ~PEN() {}
+    BASECOLOR(double _r, double _g, double _b, double _a) {
+      r = _r;
+      g = _g;
+      b = _b;
+      a = _a;
+    }
+
+    BASECOLOR(const std::string &n) {
+#if defined(USE_PANGO) && defined(USE_IMAGE_MAGICK)
+      if (pango_color_parse(&pangoColor, n.data())) {
+        r = pangoColor.red / 65535.0;
+        g = pangoColor.blue / 65535.0;
+        b = pangoColor.green / 65535.0;
+        // a = pangoColor.alpha / 65535.0;
+      }
+      magicColor = Magick::Color(r * QuantumRange, g * QuantumRange,
+                                 b * QuantumRange, a * QuantumRange);
+
+#elif defined(USE_IMAGE_MAGICK)
+      magicColor = Magick::Color(n);
+      r = magicColor.quantumRed() / QuantumRange;
+      g = magicColor.quantumGreen() / QuantumRange;
+      b = magicColor.quantumBlue() / QuantumRange;
+      a = magicColor.quantumAlpha() / QuantumRange;
+
+#endif
+    }
+
+    ~BASECOLOR() {}
     unsigned int data;
-    float r = 0.0, g = 0.0, b = 0.0, a = 0.0;
+    double r = 0.0, g = 0.0, b = 0.0, a = 1.0;
+
+#if defined(USE_PANGO)
+    PangoColor pangoColor;
+#endif // defined
+
+#if defined(USE_IMAGE_MAGICK)
+    Magick::Color magicColor;
+#endif
+  };
+
+  using PEN = class PEN : public DisplayUnit, public BASECOLOR {
+  public:
+    VIRTUAL_INDEX(PEN);
+    PEN(u_int32_t c) : BASECOLOR(c) {}
+    PEN(double _r, double _g, double _b) : BASECOLOR(_r, _g, _b) {}
+    PEN(double _r, double _g, double _b, double _a)
+        : BASECOLOR(_r, _g, _b, _a) {}
+    PEN(const std::string &n) : BASECOLOR(n) {}
+    ~PEN() {}
     void invoke(const DisplayUnitContext &context);
   };
+
+  using BACKGROUND = class BACKGROUND : public DisplayUnit, public BASECOLOR {
+  public:
+  public:
+    VIRTUAL_INDEX(BACKGROUND);
+    BACKGROUND(u_int32_t c) : BASECOLOR(c) {}
+    BACKGROUND(double _r, double _g, double _b) : BASECOLOR(_r, _g, _b) {}
+    BACKGROUND(double _r, double _g, double _b, double _a)
+        : BASECOLOR(_r, _g, _b, _a) {}
+    BACKGROUND(const std::string &n) : BASECOLOR(n) {}
+    ~BACKGROUND() {}
+    void invoke(const DisplayUnitContext &context);
+  };
+
   using ALIGN = class ALIGN : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::ALIGN_idx; }
+    VIRTUAL_INDEX(ALIGN);
+
     ALIGN(const char _aln) : a(_aln) {}
     ~ALIGN() {}
     char a = 'l';
@@ -427,7 +569,8 @@ private:
 
   using EVENT = class EVENT : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::EVENT_idx; }
+    VIRTUAL_INDEX(EVENT);
+
     EVENT(eventHandler _eh) : fn(_eh){};
     ~EVENT() {}
     eventHandler fn;
@@ -436,7 +579,8 @@ private:
 
   using DRAWTEXT = class DRAWTEXT : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::DRAWTEXT_idx; }
+    VIRTUAL_INDEX(DRAWTEXT);
+
     DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
     DRAWTEXT(std::size_t _b, std::size_t _e)
         : beginIndex(_b), endIndex(_e), bEntire(false) {}
@@ -457,7 +601,7 @@ private:
   };
   using DRAWIMAGE = class DRAWIMAGE : public DisplayUnit {
   public:
-    std::size_t index() { return contextUnitIndex::DRAWIMAGE_idx; }
+    VIRTUAL_INDEX(DRAWIMAGE);
     DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
     DRAWIMAGE(void) {}
     ~DRAWIMAGE() {}
@@ -468,20 +612,66 @@ private:
     bool bEntire = true;
   };
 
+  using DRAWBOX = class DRAWBOX : public DisplayUnit {
+  public:
+    VIRTUAL_INDEX(DRAWBOX);
+    DRAWBOX() {}
+    ~DRAWBOX() {}
+    void invoke(const DisplayUnitContext &context);
+
+  private:
+  };
+
+  typedef std::function<void(cairo_t *cr)> CAIRO_FUNCTION;
+  using FUNCTION = class FUNCTION : public DisplayUnit {
+  public:
+    VIRTUAL_INDEX(FUNCTION);
+    FUNCTION(CAIRO_FUNCTION _func) : func(_func) {}
+    ~FUNCTION() {}
+    void invoke(const DisplayUnitContext &context);
+
+  private:
+    CAIRO_FUNCTION func;
+  };
+
+#if defined(USE_IMAGE_MAGICK)
+  typedef std::function<void(Magick::Image img)> ImageFunction;
+
+  using IMAGEPROCESS = class IMAGEPROCESS : public DisplayUnit {
+  public:
+    VIRTUAL_INDEX(IMAGEPROCESS);
+
+    IMAGEPROCESS(ImageFunction _func) : func(_func){};
+    ~IMAGEPROCESS() {
+      if (output)
+        cairo_surface_destroy(output);
+    }
+
+    void invoke(const DisplayUnitContext &context);
+
+    const cairo_surface_t *input = nullptr;
+    cairo_surface_t *output = nullptr;
+    Magick::Image image;
+
+  private:
+    ImageFunction func;
+  };
+#endif
+
   class DisplayUnitContext {
   public:
-    std::array<DisplayUnit *, contextUnitIndex::MAX> currentUnit;
+    std::array<DisplayUnit *, contextUnitIndex::MAX_idx> currentUnit;
 
     DisplayUnitContext(void) {
       std::fill(currentUnit.begin(), currentUnit.end(), nullptr);
     }
 
 #define INDEXED_ACCESSOR(NAME)                                                 \
-  inline platform::NAME *NAME(void) const {                                           \
+  inline platform::NAME *NAME(void) const {                                    \
     return dynamic_cast<platform::NAME *>(                                     \
         currentUnit[contextUnitIndex::NAME##_idx]);                            \
   }                                                                            \
-  inline bool validate##NAME(void) const {                                            \
+  inline bool validate##NAME(void) const {                                     \
     return dynamic_cast<platform::NAME *>(                                     \
                currentUnit[contextUnitIndex::NAME##_idx]) != nullptr;          \
   }
@@ -491,18 +681,30 @@ private:
     INDEXED_ACCESSOR(IMAGE);
     INDEXED_ACCESSOR(FONT);
     INDEXED_ACCESSOR(PEN);
+    INDEXED_ACCESSOR(BACKGROUND);
     INDEXED_ACCESSOR(ALIGN);
     INDEXED_ACCESSOR(EVENT);
     INDEXED_ACCESSOR(DRAWTEXT);
     INDEXED_ACCESSOR(DRAWIMAGE);
+    INDEXED_ACCESSOR(DRAWBOX);
+
+    INDEXED_ACCESSOR(IMAGEPROCESS);
+    INDEXED_ACCESSOR(FUNCTION);
+
+    /**
+      \def The set routine stores the passed object within the slot context.
+      This reduces the number of parameters and offers a state.
+    */
+    void set(DisplayUnit *_ptr) { currentUnit[_ptr->index()] = _ptr; }
 
     short windowX = 0;
     short windowY = 0;
     unsigned short windowWidth = 0;
     unsigned short windowHeight = 0;
+    bool windowOpen = false;
+    cairo_t *cr = nullptr;
 
 #if defined(__linux__)
-    bool windowOpen = false;
     Display *xdisplay = nullptr;
     xcb_connection_t *connection = nullptr;
     xcb_screen_t *screen = nullptr;
@@ -515,10 +717,9 @@ private:
     xcb_key_symbols_t *syms = nullptr;
 
     cairo_surface_t *xcbSurface = nullptr;
-    cairo_t *cr = nullptr;
     bool preclear = true;
 
-#if defined(_WIN64)
+#elif defined(_WIN64)
     HWND hwnd = 0;
 
     ID2D1Factory *pD2DFactory = nullptr;
@@ -527,13 +728,11 @@ private:
 
 #endif
 
-#elif defined(USE_IMAGE_MAGICK)
+#if defined(USE_IMAGE_MAGICK)
     Magick::Image offscreenImage;
     Magick::Quantum *offscreenBuffer = nullptr;
 
 #endif
-
-    void set(DisplayUnit *_ptr) { currentUnit[_ptr->index()] = _ptr; }
   };
 
   DisplayUnitContext context;
@@ -560,6 +759,5 @@ private:
   std::vector<eventHandler> onwheel;
 
   std::vector<eventHandler> &getEventVector(eventType evtType);
-};
-
+}; // namespace uxdevice
 }; // namespace uxdevice
