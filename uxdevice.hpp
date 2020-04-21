@@ -25,7 +25,7 @@ options when compiling the source.
  * loading and processing.
 
 */
-#define USE_IMAGE_MAGICK
+//#define USE_IMAGE_MAGICK
 
 /**
 \def USE_PANGO
@@ -34,6 +34,8 @@ If this is not used the base cairo text rendering functions are used.
 
 */
 #define USE_PANGO
+
+#define USE_FRAMEBUFFER
 
 /**
 \def USE_CHROMIUM_EMBEDDED_FRAMEWORK
@@ -105,6 +107,8 @@ OS SPECIFIC HEADERS
 
 #include <sys/types.h>
 #include <xcb/xcb_keysyms.h>
+
+
 
 #elif defined(_WIN64)
 // Windows Header Files:
@@ -315,17 +319,15 @@ public:
                    const double radius_ = 0.0, const double sigma_ = 1.0);
   void charcoal(const double radius_ = 1, const double sigma_ = 0.5);
 
-  void colorize(const unsigned int alpha_,const Magick::Color &penColor_);
-  void colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
-     const unsigned int alphaBlue_,const Magick::Color &penColor_);
-
+  void colorize(const unsigned int alpha_, const Magick::Color &penColor_);
+  void colorize(const unsigned int alphaRed_, const unsigned int alphaGreen_,
+                const unsigned int alphaBlue_, const Magick::Color &penColor_);
 
   void contrast(bool sharpen_);
   void cycleColormap(int amount_);
   void despeckle(void);
   void distort(const Magick::DistortMethod method,
-               const std::vector<double> &args,
-               const bool bestfit = false);
+               const std::vector<double> &args, const bool bestfit = false);
   void equalize(void);
   void enhance(void);
   void gaussianBlur(const double width_, const double sigma_);
@@ -339,7 +341,7 @@ public:
                   const double angle_);
   void negate(bool grayscale_ = false);
   void normalize(void);
-  void oilPaint(const double radius_=3, const double sigma_=1);
+  void oilPaint(const double radius_ = 3, const double sigma_ = 1);
   void raise(const Magick::Geometry &geometry_ = "6x6+0+0",
              bool raisedFlag_ = false);
   void shade(double azimuth_ = 30, double elevation_ = 30,
@@ -635,12 +637,17 @@ private:
     Magick::Image magick = nullptr;
 #endif
     void invoke(const DisplayUnitContext &context);
+
+#if defined(USE_IMAGE_MAGICK)
     void toCairo(void);
     void toMagick(void);
+#endif
 
     std::string fileName;
     bool bLoaded = false;
+#if defined(USE_IMAGE_MAGICK)
     ImageSystemType type = ImageSystemType::none;
+#endif
   };
 
 #if defined(USE_IMAGE_MAGICK)
@@ -691,7 +698,10 @@ private:
     INDEXED_ACCESSOR(DRAWIMAGE);
     INDEXED_ACCESSOR(DRAWBOX);
 
+#if defined(USE_IMAGE_MAGICK)
     INDEXED_ACCESSOR(IMAGEPROCESS);
+#endif // defined
+
     INDEXED_ACCESSOR(FUNCTION);
 
     /**

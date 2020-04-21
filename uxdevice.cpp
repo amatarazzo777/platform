@@ -88,6 +88,7 @@ void uxdevice::platform::render(const event &evt) {
   std::chrono::duration<double> diff = end - start;
 
   lastTime = std::chrono::high_resolution_clock::now();
+  cout << diff.count() << endl << flush;
 }
 
 /**
@@ -1028,13 +1029,13 @@ void uxdevice::platform::colorize(const unsigned int alphaRed_,const unsigned in
 }
 
 #endif // 0
-void uxdevice::platform::colorize(const unsigned int alpha_,const Magick::Color &penColor_) {
-}
+void uxdevice::platform::colorize(const unsigned int alpha_,
+                                  const Magick::Color &penColor_) {}
 
-void uxdevice::platform::colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
-   const unsigned int alphaBlue_,const Magick::Color &penColor_) {
-
-}
+void uxdevice::platform::colorize(const unsigned int alphaRed_,
+                                  const unsigned int alphaGreen_,
+                                  const unsigned int alphaBlue_,
+                                  const Magick::Color &penColor_) {}
 
 void uxdevice::platform::contrast(bool sharpen_) {
   using namespace std::placeholders;
@@ -1055,7 +1056,8 @@ void uxdevice::platform::despeckle(void) {
 }
 
 void uxdevice::platform::distort(const Magick::DistortMethod method,
-                                 const std::vector<double> &args, const bool bestfit) {
+                                 const std::vector<double> &args,
+                                 const bool bestfit) {
   using namespace std::placeholders;
   ImageFunction func = std::bind(&Magick::Image::distort, _1, method,
                                  args.size(), args.data(), bestfit);
@@ -1087,7 +1089,7 @@ void uxdevice::platform::gaussianBlurChannel(const Magick::ChannelType channel_,
                                              const double sigma_) {
   using namespace std::placeholders;
   ImageFunction func = std::bind(&Magick::Image::gaussianBlurChannel, _1,
-                                 channel_, radius_,sigma_);
+                                 channel_, radius_, sigma_);
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
@@ -1133,7 +1135,7 @@ void uxdevice::platform::normalize(void) {
 
 void uxdevice::platform::oilPaint(const double radius_, const double sigma_) {
   using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::oilPaint, _1, radius_,sigma_);
+  ImageFunction func = std::bind(&Magick::Image::oilPaint, _1, radius_, sigma_);
   DL.push_back(make_unique<IMAGEPROCESS>(func));
 }
 
@@ -1261,8 +1263,10 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
+#if defined(USE_IMAGE_MAGICK)
   if (context.IMAGE()->type != IMAGE::ImageSystemType::cairo_type)
     context.IMAGE()->toCairo();
+#endif
 
   cairo_set_source_surface(context.cr, context.IMAGE()->cairo,
                            context.AREA()->x, context.AREA()->y);
@@ -1355,13 +1359,51 @@ void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
 
 #else
   cairo = cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
-  type = ImageSystemType::cairo_type;
-  magick = nullptr;
+
 
 #endif // USE_IMAGE_MAGICK
   bLoaded = true;
 }
 
+#if 0
+
+function gaussBlur_4 (scl, tcl, w, h, r) {
+    var bxs = boxesForGauss(r, 3);
+    boxBlur_4 (scl, tcl, w, h, (bxs[0]-1)/2);
+    boxBlur_4 (tcl, scl, w, h, (bxs[1]-1)/2);
+    boxBlur_4 (scl, tcl, w, h, (bxs[2]-1)/2);
+}
+function boxBlur_4 (scl, tcl, w, h, r) {
+    for(var i=0; i<scl.length; i++) tcl[i] = scl[i];
+    boxBlurH_4(tcl, scl, w, h, r);
+    boxBlurT_4(scl, tcl, w, h, r);
+}
+function boxBlurH_4 (scl, tcl, w, h, r) {
+    var iarr = 1 / (r+r+1);
+    for(var i=0; i<h; i++) {
+        var ti = i*w, li = ti, ri = ti+r;
+        var fv = scl[ti], lv = scl[ti+w-1], val = (r+1)*fv;
+        for(var j=0; j<r; j++) val += scl[ti+j];
+        for(var j=0  ; j<=r ; j++) { val += scl[ri++] - fv       ;   tcl[ti++] = Math.round(val*iarr); }
+        for(var j=r+1; j<w-r; j++) { val += scl[ri++] - scl[li++];   tcl[ti++] = Math.round(val*iarr); }
+        for(var j=w-r; j<w  ; j++) { val += lv        - scl[li++];   tcl[ti++] = Math.round(val*iarr); }
+    }
+}
+function boxBlurT_4 (scl, tcl, w, h, r) {
+    var iarr = 1 / (r+r+1);
+    for(var i=0; i<w; i++) {
+        var ti = i, li = ti, ri = ti+r*w;
+        var fv = scl[ti], lv = scl[ti+w*(h-1)], val = (r+1)*fv;
+        for(var j=0; j<r; j++) val += scl[ti+j*w];
+        for(var j=0  ; j<=r ; j++) { val += scl[ri] - fv     ;  tcl[ti] = Math.round(val*iarr);  ri+=w; ti+=w; }
+        for(var j=r+1; j<h-r; j++) { val += scl[ri] - scl[li];  tcl[ti] = Math.round(val*iarr);  li+=w; ri+=w; ti+=w; }
+        for(var j=h-r; j<h  ; j++) { val += lv      - scl[li];  tcl[ti] = Math.round(val*iarr);  li+=w; ti+=w; }
+    }
+}
+#endif // 0
+
+
+#if defined(USE_IMAGE_MAGICK)
 void uxdevice::platform::IMAGE::toCairo(void) {
   if (type != ImageSystemType::magick_type) {
     std::stringstream sError;
@@ -1374,38 +1416,19 @@ void uxdevice::platform::IMAGE::toCairo(void) {
   int stride = cairo_format_stride_for_width(format, magick.columns());
   unsigned char *surfacedata =
       reinterpret_cast<unsigned char *>(malloc(stride * magick.rows()));
-  magick.type(Magick::TrueColorAlphaType);
 
-  Magick::Pixels view(magick);
-
-  const Magick::Quantum *pixels =
-      view.getConst(0, 0, magick.columns(), magick.rows());
-
-  for (std::size_t y = 0; y < magick.rows(); y++) {
-    unsigned int *pBuffer =
-        reinterpret_cast<unsigned int *>(surfacedata + y * stride);
-
-    for (std::size_t x = 0; x < magick.columns(); x++) {
-      unsigned char R, G, B, A;
-      R = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      G = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      B = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      A = static_cast<unsigned char>(*pixels / QuantumRange * 255.0);
-      pixels++;
-      *pBuffer = A << 24 | R << 16 | G << 8 | B;
-      pBuffer++;
-    }
-  }
+  // check endian format for this string,, -->>>>>>>
+  magick.write(0,0,  magick.columns(),magick.rows(),"BGRA",
+    Magick::StorageType::CharPixel,surfacedata);
 
   cairo = cairo_image_surface_create_for_data(
       surfacedata, format, magick.columns(), magick.rows(), stride);
   type = ImageSystemType::cairo_type;
   magick = nullptr;
 }
+#endif
 
+#if defined(USE_IMAGE_MAGICK)
 void uxdevice::platform::IMAGE::toMagick(void) {
   if (cairo == nullptr) {
     std::stringstream sError;
@@ -1420,18 +1443,20 @@ void uxdevice::platform::IMAGE::toMagick(void) {
   switch (cairo_image_surface_get_format(cairo)) {
   case CAIRO_FORMAT_ARGB32:
     sImageMap = "ARGB";
-    store = Magick::StorageType::LongPixel;
+    store = Magick::StorageType::CharPixel;
     break;
   }
 
-  magick = Magick::Image(cairo_image_surface_get_width(cairo),
-                         cairo_image_surface_get_height(cairo), sImageMap,
-                         store, cairo_image_surface_get_data(cairo));
+  magick.read(cairo_image_surface_get_width(cairo),
+               cairo_image_surface_get_height(cairo), sImageMap,
+               store, cairo_image_surface_get_data(cairo));
+
 
   type = ImageSystemType::magick_type;
   cairo_surface_destroy(cairo);
   cairo = nullptr;
 }
+#endif // defined
 
 #if defined(USE_IMAGE_MAGICK)
 void uxdevice::platform::IMAGEPROCESS::invoke(

@@ -37,7 +37,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   vis.clear();
 
-vis.text("To summarize output logic by inspecting the means by which it is "
+  vis.text("To summarize output logic by inspecting the means by which it is "
            "produced provides the capability to offer optimization.");
   vis.fontDescription("Arial normal 19");
   vis.area(0, 0, 500, 300);
@@ -50,16 +50,15 @@ vis.text("To summarize output logic by inspecting the means by which it is "
   vis.pen(0x00);
   vis.drawText();
 
-
-  vis.move_to(5,5);
-  vis.line_to(300,250);
+  vis.move_to(5, 5);
+  vis.line_to(300, 250);
   vis.stroke();
 
   stringstream ss;
   for (int i = 0; i < 30; i++) {
     ss << i
        << ". Through the progression of learning, better results can make an "
-          "appearance\n";
+          "appearance.\n";
   }
   vis.text(ss);
   vis.area(10, 100, 600, 600);
@@ -77,19 +76,25 @@ vis.text("To summarize output logic by inspecting the means by which it is "
   vis.drawText();
 
   vis.image("/home/anthony/source/nanosvg/example/screenshot-2.png");
-  vis.charcoal();
-  vis.blur();
+  //vis.charcoal();
+
   vis.area(200, 200, 300, 500);
   vis.drawImage();
 
   vis.image("/home/anthony/source/nanosvg/example/draw.png");
-  vis.area(500, 200, 900, 500);
-  vis.shadow(20, .5, 20, 20);
+  vis.area(510, 210, 900, 500);
+ // vis.shadow(40, .5, 10, 10);
+ // vis.blur();
   vis.drawImage();
+
+  vis.image("/home/anthony/source/nanosvg/example/draw.png");
+  vis.area(500, 200, 900, 500);
+  vis.drawImage();
+
 
   vis.pen(0, 0, .2, .1);
   vis.move_to(5, 5);
-  vis.line_to(300, 250);
+  vis.line_to(300, 750);
   vis.stroke();
 
   vis.processEvents();
