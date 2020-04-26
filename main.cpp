@@ -36,10 +36,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.openWindow("Information Title", 800, 600);
 
   vis.clear();
+  vis.antiAlias(platform::subPixel);
 
-  vis.text("To summarize output logic by inspecting the means by which it is "
+  vis.text("To summarize logic by inspecting the means by which output is "
            "produced provides the capability to offer optimization.");
-  vis.fontDescription("Arial normal 19");
+  vis.font("DejaVu Sans Bold 19");
+  vis.textShadow(.3, 0, 0,1, 4,1,2);
+   vis.textFill({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1},{4, .8, 0, 0, 1}});
+  //vis.textFill("/home/anthony/development/platform/bug.png");
+  vis.textOutline(.3, 0, 0, .5);
   vis.area(0, 0, 500, 300);
 
   vis.pen(0, 0, .2, 1);
@@ -47,12 +52,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.drawBox();
 
   vis.background(1, 1, 1);
-  vis.pen(0x00);
+  vis.pen(0xFF0000);
   vis.drawText();
 
-  vis.move_to(5, 5);
-  vis.line_to(300, 250);
-  vis.stroke();
+  vis.textFillNone();
+  vis.textOutlineNone();
+  vis.textShadowNone();
 
   stringstream ss;
   for (int i = 0; i < 30; i++) {
@@ -60,9 +65,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
        << ". Through the progression of learning, better results can make an "
           "appearance.\n";
   }
+  vis.font("DejaVu Sans normal 14");
   vis.text(ss);
-  vis.area(10, 100, 600, 600);
+  vis.area(10, 200, 600, 600);
+  // vis.textShadow(0, .1, .0, 2);
   vis.pen(0x000fff);
+  vis.textFill("/home/anthony/development/platform/text.png");
+  vis.textOutline(0,0,0,.5);
   vis.drawText();
 
   ss.str("");
@@ -73,29 +82,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.text(ss);
   vis.area(650, 30, 1000, 800);
   vis.pen("brown");
+  vis.textOutlineNone();
+  vis.textShadow(0, .1, .0, 2);
+  vis.textFillNone();
   vis.drawText();
 
   vis.image("/home/anthony/source/nanosvg/example/screenshot-2.png");
-  //vis.charcoal();
 
   vis.area(200, 200, 300, 500);
   vis.drawImage();
 
   vis.image("/home/anthony/source/nanosvg/example/draw.png");
-  vis.area(510, 210, 900, 500);
- // vis.shadow(40, .5, 10, 10);
- // vis.blur();
-  vis.drawImage();
-
-  vis.image("/home/anthony/source/nanosvg/example/draw.png");
   vis.area(500, 200, 900, 500);
   vis.drawImage();
-
-
-  vis.pen(0, 0, .2, .1);
-  vis.move_to(5, 5);
-  vis.line_to(300, 750);
-  vis.stroke();
 
   vis.processEvents();
 

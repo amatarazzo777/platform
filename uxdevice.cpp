@@ -46,13 +46,12 @@ void uxdevice::platform::render(const event &evt) {
     cairo_paint(context.cr);
     context.preclear = false;
   }
-  // cairo_set_operator(context.cr, CAIRO_OPERATOR_SOURCE);
-  // cairo_set_antialias(context.cr, CAIRO_ANTIALIAS_SUBPIXEL);
-
-  // cairo_set_operator(context.cr, CAIRO_OPERATOR_OVER);
-  // cairo_set_antialias(m_cr, CAIRO_ANTIALIAS_SUBPIXEL);
 
   for (auto &n : DL) {
+    if (n->index() == IDX(CLEAROPTION)) {
+      context.clear(dynamic_cast<CLEAROPTION *>(n.get())->option);
+      continue;
+    }
     context.set(n.get());
     n->invoke(context);
 
@@ -73,15 +72,7 @@ void uxdevice::platform::render(const event &evt) {
   cairo_pop_group_to_source(context.cr);
   cairo_paint(context.cr);
 
-#if 0
-  cairo_fill(context.cr);
-  cairo_rectangle(context.cr, 100,100,200,200);
-  cairo_stroke(context.cr);
-
-#endif
-
   cairo_surface_flush(context.xcbSurface);
-  // cairo_surface_write_to_png (context.xcbSurface, "test.png");
   xcb_flush(context.connection);
 
   auto end = std::chrono::high_resolution_clock::now();
@@ -363,10 +354,6 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, sWindowTitle.size(),
                       sWindowTitle.data());
 
-  /* Map the window on the screen and flush*/
-  xcb_map_window(context.connection, context.window);
-  xcb_flush(context.connection);
-
   if (!context.window) {
     closeWindow();
     std::stringstream sError;
@@ -410,10 +397,12 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
-  cairo_set_source_rgb(context.cr, 0, 1.0, 1.0);
-  cairo_paint(context.cr);
-
+  context.preclear = true;
+  render(event{eventType::paint, 0, 0});
   cairo_surface_flush(context.xcbSurface);
+
+  /* Map the window on the screen and flush*/
+  xcb_map_window(context.connection, context.window);
   xcb_flush(context.connection);
   context.windowOpen = true;
 
@@ -776,6 +765,11 @@ void uxdevice::platform::messageLoop(void) {
 \brief clears the display list
 */
 void uxdevice::platform::clear(void) { DL.clear(); }
+
+void uxdevice::platform::antiAlias(antialias_t antialias) {
+  DL.push_back(make_unique<ANTIALIAS>(antialias));
+}
+
 /**
 \brief sets the text
 */
@@ -841,10 +835,92 @@ void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b, _a));
 }
+
 /**
 \brief
 */
-void uxdevice::platform::fontDescription(const std::string &s) {
+void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(const string &c, double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(double _r, double _g, double _b,
+                                     double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, dWidth));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
+                                     double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
+}
+/**
+\brief clears the current text outline from the context.
+*/
+void uxdevice::platform::textOutlineNone(void) {
+  DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTOUTLINE)));
+}
+
+void uxdevice::platform::textFill(const string &s) {
+  DL.push_back(make_unique<TEXTFILL>(s));
+}
+
+void uxdevice::platform::textFill(const ColorStops &s) {
+  DL.push_back(make_unique<TEXTFILL>(s));
+}
+/**
+\brief clears the current text fill from the context.
+*/
+void uxdevice::platform::textFillNone(void) {
+  DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTFILL)));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
+                                    double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
+                                    double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
+                                    double xOffset, double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
+                                    int r, double xOffset, double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
+}
+/**
+\brief clears the current text fill from the context.
+*/
+void uxdevice::platform::textShadowNone(void) {
+  DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTSHADOW)));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::font(const std::string &s) {
   DL.push_back(make_unique<FONT>(s));
 }
 /**
@@ -964,213 +1040,9 @@ void uxdevice::platform::rectangle(double x, double y, double width,
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
-#if defined(USE_IMAGE_MAGICK)
-// these functions store a pointer to the image magick member function
-// later, the actual image is placed within the call before invocation.
-void uxdevice::platform::addNoise(Magick::NoiseType noiseType_) {
-  using namespace std::placeholders;
-  const double attenuate_ = 1.0;
-  ImageFunction func =
-      std::bind(&Magick::Image::addNoise, _1, noiseType_, attenuate_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::addNoiseChannel(const Magick::ChannelType channel_,
-                                         const Magick::NoiseType noiseType_) {
-  using namespace std::placeholders;
-  const double attenuate_ = 1.0;
-  ImageFunction func = std::bind(&Magick::Image::addNoiseChannel, _1, channel_,
-                                 noiseType_, attenuate_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::blur(const double radius_, const double sigma_) {
-  using namespace std::placeholders;
-
-  ImageFunction func = std::bind(&Magick::Image::blur, _1, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::blurChannel(const Magick::ChannelType channel_,
-                                     const double radius_,
-                                     const double sigma_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::blurChannel, _1, channel_, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::charcoal(const double radius_, const double sigma_) {
-  using namespace std::placeholders;
-
-  // NOTE extract alpha channel and use it as a mask after image processing to
-  // maintain alpha transparency
-
-  ImageFunction func = std::bind(&Magick::Image::charcoal, _1, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-#if 0
-/******** forward ?? the reference cannot be sent using the bind method due to compilation issue.
-*/
-void uxdevice::platform::colorize(const unsigned int alpha_,const Magick::Color &penColor_) {
-  using namespace std::placeholders;
-  const Magick::Color c(penColor_);
-  ImageFunction func = std::bind(&Magick::Image::colorize, _1, alpha_, &c));
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::colorize(const unsigned int alphaRed_,const unsigned int alphaGreen_,
-   const unsigned int alphaBlue_,const Magick::Color penColor_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::colorize, _1, alphaRed_,
-                                 alphaGreen_, alphaBlue_, penColor_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-#endif // 0
-void uxdevice::platform::colorize(const unsigned int alpha_,
-                                  const Magick::Color &penColor_) {}
-
-void uxdevice::platform::colorize(const unsigned int alphaRed_,
-                                  const unsigned int alphaGreen_,
-                                  const unsigned int alphaBlue_,
-                                  const Magick::Color &penColor_) {}
-
-void uxdevice::platform::contrast(bool sharpen_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::contrast, _1, sharpen_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::cycleColormap(int amount_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::cycleColormap, _1, amount_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::despeckle(void) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::despeckle, _1);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::distort(const Magick::DistortMethod method,
-                                 const std::vector<double> &args,
-                                 const bool bestfit) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::distort, _1, method,
-                                 args.size(), args.data(), bestfit);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::equalize(void) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::equalize, _1);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::enhance(void) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::enhance, _1);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::gaussianBlur(const double width_,
-                                      const double sigma_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::gaussianBlur, _1, width_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::gaussianBlurChannel(const Magick::ChannelType channel_,
-                                             const double radius_,
-                                             const double sigma_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::gaussianBlurChannel, _1,
-                                 channel_, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::implode(const double factor_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::implode, _1, factor_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::medianFilter(const double radius_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::medianFilter, _1, radius_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::modulate(double brightness_, double saturation_,
-                                  double hue_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::modulate, _1, brightness_, saturation_, hue_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::motionBlur(const double radius_, const double sigma_,
-                                    const double angle_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::motionBlur, _1, radius_, sigma_, angle_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::negate(bool grayscale_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::negate, _1, grayscale_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::normalize(void) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::normalize, _1);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::oilPaint(const double radius_, const double sigma_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::oilPaint, _1, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::raise(const Magick::Geometry &geometry_,
-                               bool raisedFlag_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::raise, _1, geometry_, raisedFlag_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::shade(double azimuth_, double elevation_,
-                               bool colorShading_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::shade, _1, azimuth_, elevation_, colorShading_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-
-void uxdevice::platform::shadow(const double percent_opacity,
-                                const double sigma_, const ssize_t x_,
-                                const ssize_t y_) {
-  using namespace std::placeholders;
-  ImageFunction func =
-      std::bind(&Magick::Image::shadow, _1, percent_opacity, sigma_, x_, y_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-void uxdevice::platform::sharpen(const double radius_, const double sigma_) {
-  using namespace std::placeholders;
-  ImageFunction func = std::bind(&Magick::Image::sharpen, _1, radius_, sigma_);
-  DL.push_back(make_unique<IMAGEPROCESS>(func));
-}
-#endif // defined
-
 /***************************************************************************/
+void uxdevice::platform::CLEAROPTION::invoke(
+    const DisplayUnitContext &context) {}
 
 /**
 \internal
@@ -1191,15 +1063,7 @@ void uxdevice::platform::STRING::invoke(const DisplayUnitContext &context) {}
 \brief The FONT object provides contextual font object for library.
 */
 void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {
-#if defined(USE_PANGO)
   fontDescription = pango_font_description_from_string(description.data());
-
-#else
-  cairo_select_font_face(context.cr, description.data(),
-                         CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-  cairo_set_font_size(context.cr, pointSize);
-
-#endif
 }
 
 /**
@@ -1215,6 +1079,29 @@ void uxdevice::platform::ALIGN::invoke(const DisplayUnitContext &context) {}
 */
 void uxdevice::platform::EVENT::invoke(const DisplayUnitContext &context) {}
 
+void uxdevice::platform::ANTIALIAS::invoke(const DisplayUnitContext &context) {}
+
+void uxdevice::platform::TEXTOUTLINE::invoke(
+    const DisplayUnitContext &context) {}
+
+void uxdevice::platform::TEXTFILL::invoke(const DisplayUnitContext &context) {
+  // load texture if does not exist
+  if (bImage && !bLoaded) {
+    image = cairo_image_surface_create_from_png(fileName.data());
+    paint = cairo_pattern_create_for_surface(image);
+    cairo_pattern_set_extend(paint, CAIRO_EXTEND_REFLECT);
+    cairo_pattern_set_filter(paint, CAIRO_FILTER_BILINEAR);
+    bLoaded = true;
+
+  } else if (bGradient && !paint) {
+    paint = cairo_pattern_create_linear(0, 0, 0, 15);
+    cairo_pattern_set_extend(paint, CAIRO_EXTEND_REPEAT);
+    for (auto &n : stops) {
+      cairo_pattern_add_color_stop_rgba(paint, n.offset, n.r, n.g, n.g, n.a);
+    }
+  }
+}
+
 /**
 \internal
 \brief The drawText function provides textual character rendering.
@@ -1228,26 +1115,465 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-#if defined USE_PANGO
+  // create offscreen image of the text
+  if (!textImage) {
+    cairo_format_t format = CAIRO_FORMAT_ARGB32;
 
-  layout = pango_cairo_create_layout(context.cr);
-  pango_layout_set_text(layout, context.STRING()->data.data(), -1);
-  pango_layout_set_font_description(layout, context.FONT()->fontDescription);
+    textImage = cairo_image_surface_create(format, context.AREA()->w,
+                                           context.AREA()->h);
+    cairo_t *textCr = cairo_create(textImage);
 
-  // pangoColor
-  pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
-  pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
+    if (context.validateANTIALIAS()) {
+      cairo_set_antialias(textCr, context.ANTIALIAS()->setting);
+    } else {
+      cairo_set_antialias(textCr, cairo_antialias_t::CAIRO_ANTIALIAS_DEFAULT);
+    }
 
-  pango_cairo_update_layout(context.cr, layout);
+    // clear the image with transparency
+    cairo_set_source_rgba(textCr, 0, 0, 0, 0);
+    cairo_paint(textCr);
 
-  pango_cairo_show_layout(context.cr, layout);
+    layout = pango_cairo_create_layout(textCr);
+    pango_layout_set_text(layout, context.STRING()->data.data(), -1);
+    pango_layout_set_font_description(layout, context.FONT()->fontDescription);
 
-  g_object_unref(layout);
-  layout = nullptr;
+    // pangoColor
+    pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
+    pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
 
-#else
-  cairo_show_text(context.cr, context.STRING()->data.data());
-#endif
+    pango_cairo_update_layout(textCr, layout);
+
+    // depending on the parameters set for the textual character rendering,
+    // different pango apis may be used in conjunction with cairo.
+    // essentially this optimizes the textual rendering
+    // wuch that less calls are made and more automatic filling
+    // occurss within the rendering.
+    bool bUsePathLayout = false;
+    bool bOutline = false;
+    bool bFilled = false;
+
+    // if the text is drawn with an outline
+    if (context.validateTEXTOUTLINE()) {
+      bUsePathLayout = true;
+      bOutline = true;
+    }
+    // if the text is filled with a texture or gradient
+    if (context.validateTEXTFILL()) {
+      bFilled = true;
+      bUsePathLayout = true;
+    }
+    // path layout is used for outline and filled options.
+    if (bUsePathLayout) {
+
+      // draw the glyph shapes
+      pango_cairo_layout_path(textCr, layout);
+
+      // text is filled and outlined.
+      if (bFilled && bOutline) {
+        cairo_set_source(textCr, context.TEXTFILL()->paint);
+        cairo_fill_preserve(textCr);
+
+        cairo_set_source_rgba(
+            textCr, context.TEXTOUTLINE()->r, context.TEXTOUTLINE()->g,
+            context.TEXTOUTLINE()->b, context.TEXTOUTLINE()->a);
+        cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
+        cairo_stroke(textCr);
+
+        // text is only filled.
+      } else if (bFilled) {
+        cairo_set_source(textCr, context.TEXTFILL()->paint);
+        cairo_fill(textCr);
+
+        // text is only outlined.
+      } else if (bOutline) {
+        cairo_set_source_rgba(
+            textCr, context.TEXTOUTLINE()->r, context.TEXTOUTLINE()->g,
+            context.TEXTOUTLINE()->b, context.TEXTOUTLINE()->a);
+        cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
+        cairo_stroke(textCr);
+      }
+
+    } else {
+      // no outline or fill defined, therefore the pen is used.
+      cairo_set_source_rgba(textCr, context.PEN()->r, context.PEN()->g,
+                            context.PEN()->b, context.PEN()->a);
+      pango_cairo_show_layout(textCr, layout);
+    }
+
+    // free drawing context
+    cairo_destroy(textCr);
+    g_object_unref(layout);
+    layout = nullptr;
+  }
+
+  // draw shadow if one exists
+  if (context.validateTEXTSHADOW()) {
+    if (!shadowImage) {
+
+      cairo_format_t format = CAIRO_FORMAT_ARGB32;
+
+      shadowImage = cairo_image_surface_create(format, context.AREA()->w,
+                                               context.AREA()->h);
+      cairo_t *shadowCr = cairo_create(shadowImage);
+      cairo_set_source_rgba(shadowCr, context.TEXTSHADOW()->color.r,
+                            context.TEXTSHADOW()->color.g,
+                            context.TEXTSHADOW()->color.b, 0);
+      cairo_paint(shadowCr);
+
+      if (context.validateANTIALIAS()) {
+        cairo_set_antialias(shadowCr, context.ANTIALIAS()->setting);
+      } else {
+        cairo_set_antialias(shadowCr,
+                            cairo_antialias_t::CAIRO_ANTIALIAS_DEFAULT);
+      }
+
+      // create an image for the text
+      PangoLayout *layout = nullptr;
+      layout = pango_cairo_create_layout(shadowCr);
+      pango_layout_set_text(layout, context.STRING()->data.data(), -1);
+      pango_layout_set_font_description(layout,
+                                        context.FONT()->fontDescription);
+
+      // pangoColor
+      cairo_set_source_rgba(shadowCr, context.TEXTSHADOW()->color.r,
+                            context.TEXTSHADOW()->color.g,
+                            context.TEXTSHADOW()->color.b, 1);
+
+      pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
+      pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
+
+      pango_cairo_update_layout(shadowCr, layout);
+      pango_cairo_show_layout(shadowCr, layout);
+
+      blurImage(shadowImage, context.TEXTSHADOW()->radius);
+      cairo_destroy(shadowCr);
+      g_object_unref(layout);
+      layout = nullptr;
+    }
+    cairo_save(context.cr);
+
+    cairo_set_source_rgba(context.cr, context.TEXTSHADOW()->color.r,
+                          context.TEXTSHADOW()->color.g,
+                          context.TEXTSHADOW()->color.b, 1);
+    cairo_mask_surface(context.cr, shadowImage,
+                       context.AREA()->x + context.TEXTSHADOW()->x,
+                       context.AREA()->y + context.TEXTSHADOW()->y);
+    cairo_restore(context.cr);
+  }
+
+  // move the text rendering to the display.
+  cairo_set_source_surface(context.cr, textImage, context.AREA()->x,
+                           context.AREA()->y);
+  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
+                  context.AREA()->w, context.AREA()->h);
+  cairo_fill(context.cr);
+}
+
+/// Stack Blur Algorithm by Mario Klingemann <mario@quasimondo.com>
+/// Stackblur algorithm by Mario Klingemann
+/// Details here:
+/// http://www.quasimondo.com/StackBlurForCanvas/StackBlurDemo.html
+/// C++ implemenation base from:
+/// https://gist.github.com/benjamin9999/3809142
+/// http://www.antigrain.com/__code/include/agg_blur.h.html
+/// This version works only with RGBA color
+void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
+  static unsigned short const stackblur_mul[255] = {
+      512, 512, 456, 512, 328, 456, 335, 512, 405, 328, 271, 456, 388, 335,
+      292, 512, 454, 405, 364, 328, 298, 271, 496, 456, 420, 388, 360, 335,
+      312, 292, 273, 512, 482, 454, 428, 405, 383, 364, 345, 328, 312, 298,
+      284, 271, 259, 496, 475, 456, 437, 420, 404, 388, 374, 360, 347, 335,
+      323, 312, 302, 292, 282, 273, 265, 512, 497, 482, 468, 454, 441, 428,
+      417, 405, 394, 383, 373, 364, 354, 345, 337, 328, 320, 312, 305, 298,
+      291, 284, 278, 271, 265, 259, 507, 496, 485, 475, 465, 456, 446, 437,
+      428, 420, 412, 404, 396, 388, 381, 374, 367, 360, 354, 347, 341, 335,
+      329, 323, 318, 312, 307, 302, 297, 292, 287, 282, 278, 273, 269, 265,
+      261, 512, 505, 497, 489, 482, 475, 468, 461, 454, 447, 441, 435, 428,
+      422, 417, 411, 405, 399, 394, 389, 383, 378, 373, 368, 364, 359, 354,
+      350, 345, 341, 337, 332, 328, 324, 320, 316, 312, 309, 305, 301, 298,
+      294, 291, 287, 284, 281, 278, 274, 271, 268, 265, 262, 259, 257, 507,
+      501, 496, 491, 485, 480, 475, 470, 465, 460, 456, 451, 446, 442, 437,
+      433, 428, 424, 420, 416, 412, 408, 404, 400, 396, 392, 388, 385, 381,
+      377, 374, 370, 367, 363, 360, 357, 354, 350, 347, 344, 341, 338, 335,
+      332, 329, 326, 323, 320, 318, 315, 312, 310, 307, 304, 302, 299, 297,
+      294, 292, 289, 287, 285, 282, 280, 278, 275, 273, 271, 269, 267, 265,
+      263, 261, 259};
+
+  static unsigned char const stackblur_shr[255] = {
+      9,  11, 12, 13, 13, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16, 17, 17,
+      17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 18, 19, 19, 19,
+      19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20, 20, 20,
+      20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21,
+      21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
+      21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22,
+      22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22,
+      22, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23, 23, 23,
+      23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
+      23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
+      23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24,
+      24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24,
+      24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24,
+      24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24,
+      24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24};
+
+  if (radius > 254)
+    return;
+  if (radius < 2)
+    return;
+
+  cairo_surface_flush(img);
+
+  unsigned char *src =
+      reinterpret_cast<unsigned char *>(cairo_image_surface_get_data(img));
+  unsigned int w = cairo_image_surface_get_width(img);
+  unsigned int h = cairo_image_surface_get_height(img);
+  unsigned int x, y, xp, yp, i;
+  unsigned int sp;
+  unsigned int stack_start;
+  unsigned char *stack_ptr;
+
+  unsigned char *src_ptr;
+  unsigned char *dst_ptr;
+
+  unsigned long sum_r;
+  unsigned long sum_g;
+  unsigned long sum_b;
+  unsigned long sum_a;
+  unsigned long sum_in_r;
+  unsigned long sum_in_g;
+  unsigned long sum_in_b;
+  unsigned long sum_in_a;
+  unsigned long sum_out_r;
+  unsigned long sum_out_g;
+  unsigned long sum_out_b;
+  unsigned long sum_out_a;
+
+  unsigned int wm = w - 1;
+  unsigned int hm = h - 1;
+  unsigned int w4 = cairo_image_surface_get_stride(img);
+  unsigned int mul_sum = stackblur_mul[radius];
+  unsigned char shr_sum = stackblur_shr[radius];
+
+  unsigned int div = (radius * 2) + 1;
+  unsigned char *stack = new unsigned char[div * 4];
+
+  int minY = 0;
+  int maxY = h;
+
+  for (y = minY; y < maxY; y++) {
+    sum_r = sum_g = sum_b = sum_a = sum_in_r = sum_in_g = sum_in_b = sum_in_a =
+        sum_out_r = sum_out_g = sum_out_b = sum_out_a = 0;
+
+    src_ptr = src + w4 * y; // start of line (0,y)
+
+    for (i = 0; i <= radius; i++) {
+      stack_ptr = &stack[4 * i];
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+      sum_r += src_ptr[0] * (i + 1);
+      sum_g += src_ptr[1] * (i + 1);
+      sum_b += src_ptr[2] * (i + 1);
+      sum_a += src_ptr[3] * (i + 1);
+      sum_out_r += src_ptr[0];
+      sum_out_g += src_ptr[1];
+      sum_out_b += src_ptr[2];
+      sum_out_a += src_ptr[3];
+    }
+
+    for (i = 1; i <= radius; i++) {
+      if (i <= wm)
+        src_ptr += 4;
+      stack_ptr = &stack[4 * (i + radius)];
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+      sum_r += src_ptr[0] * (radius + 1 - i);
+      sum_g += src_ptr[1] * (radius + 1 - i);
+      sum_b += src_ptr[2] * (radius + 1 - i);
+      sum_a += src_ptr[3] * (radius + 1 - i);
+      sum_in_r += src_ptr[0];
+      sum_in_g += src_ptr[1];
+      sum_in_b += src_ptr[2];
+      sum_in_a += src_ptr[3];
+    }
+
+    sp = radius;
+    xp = radius;
+    if (xp > wm)
+      xp = wm;
+    src_ptr = src + 4 * (xp + y * w); //   img.pix_ptr(xp, y);
+    dst_ptr = src + y * w4;           // img.pix_ptr(0, y);
+    for (x = 0; x < w; x++) {
+      dst_ptr[0] = (sum_r * mul_sum) >> shr_sum;
+      dst_ptr[1] = (sum_g * mul_sum) >> shr_sum;
+      dst_ptr[2] = (sum_b * mul_sum) >> shr_sum;
+      dst_ptr[3] = (sum_a * mul_sum) >> shr_sum;
+      dst_ptr += 4;
+
+      sum_r -= sum_out_r;
+      sum_g -= sum_out_g;
+      sum_b -= sum_out_b;
+      sum_a -= sum_out_a;
+
+      stack_start = sp + div - radius;
+      if (stack_start >= div)
+        stack_start -= div;
+      stack_ptr = &stack[4 * stack_start];
+
+      sum_out_r -= stack_ptr[0];
+      sum_out_g -= stack_ptr[1];
+      sum_out_b -= stack_ptr[2];
+      sum_out_a -= stack_ptr[3];
+
+      if (xp < wm) {
+        src_ptr += 4;
+        ++xp;
+      }
+
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+
+      sum_in_r += src_ptr[0];
+      sum_in_g += src_ptr[1];
+      sum_in_b += src_ptr[2];
+      sum_in_a += src_ptr[3];
+      sum_r += sum_in_r;
+      sum_g += sum_in_g;
+      sum_b += sum_in_b;
+      sum_a += sum_in_a;
+
+      ++sp;
+      if (sp >= div)
+        sp = 0;
+      stack_ptr = &stack[sp * 4];
+
+      sum_out_r += stack_ptr[0];
+      sum_out_g += stack_ptr[1];
+      sum_out_b += stack_ptr[2];
+      sum_out_a += stack_ptr[3];
+      sum_in_r -= stack_ptr[0];
+      sum_in_g -= stack_ptr[1];
+      sum_in_b -= stack_ptr[2];
+      sum_in_a -= stack_ptr[3];
+    }
+  }
+
+  int minX = 0;
+  int maxX = w;
+
+  for (x = minX; x < maxX; x++) {
+    sum_r = sum_g = sum_b = sum_a = sum_in_r = sum_in_g = sum_in_b = sum_in_a =
+        sum_out_r = sum_out_g = sum_out_b = sum_out_a = 0;
+
+    src_ptr = src + 4 * x; // x,0
+    for (i = 0; i <= radius; i++) {
+      stack_ptr = &stack[i * 4];
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+      sum_r += src_ptr[0] * (i + 1);
+      sum_g += src_ptr[1] * (i + 1);
+      sum_b += src_ptr[2] * (i + 1);
+      sum_a += src_ptr[3] * (i + 1);
+      sum_out_r += src_ptr[0];
+      sum_out_g += src_ptr[1];
+      sum_out_b += src_ptr[2];
+      sum_out_a += src_ptr[3];
+    }
+    for (i = 1; i <= radius; i++) {
+      if (i <= hm)
+        src_ptr += w4; // +stride
+
+      stack_ptr = &stack[4 * (i + radius)];
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+      sum_r += src_ptr[0] * (radius + 1 - i);
+      sum_g += src_ptr[1] * (radius + 1 - i);
+      sum_b += src_ptr[2] * (radius + 1 - i);
+      sum_a += src_ptr[3] * (radius + 1 - i);
+      sum_in_r += src_ptr[0];
+      sum_in_g += src_ptr[1];
+      sum_in_b += src_ptr[2];
+      sum_in_a += src_ptr[3];
+    }
+
+    sp = radius;
+    yp = radius;
+    if (yp > hm)
+      yp = hm;
+    src_ptr = src + 4 * (x + yp * w); // img.pix_ptr(x, yp);
+    dst_ptr = src + 4 * x;            // img.pix_ptr(x, 0);
+    for (y = 0; y < h; y++) {
+      dst_ptr[0] = (sum_r * mul_sum) >> shr_sum;
+      dst_ptr[1] = (sum_g * mul_sum) >> shr_sum;
+      dst_ptr[2] = (sum_b * mul_sum) >> shr_sum;
+      dst_ptr[3] = (sum_a * mul_sum) >> shr_sum;
+      dst_ptr += w4;
+
+      sum_r -= sum_out_r;
+      sum_g -= sum_out_g;
+      sum_b -= sum_out_b;
+      sum_a -= sum_out_a;
+
+      stack_start = sp + div - radius;
+      if (stack_start >= div)
+        stack_start -= div;
+      stack_ptr = &stack[4 * stack_start];
+
+      sum_out_r -= stack_ptr[0];
+      sum_out_g -= stack_ptr[1];
+      sum_out_b -= stack_ptr[2];
+      sum_out_a -= stack_ptr[3];
+
+      if (yp < hm) {
+        src_ptr += w4; // stride
+        ++yp;
+      }
+
+      stack_ptr[0] = src_ptr[0];
+      stack_ptr[1] = src_ptr[1];
+      stack_ptr[2] = src_ptr[2];
+      stack_ptr[3] = src_ptr[3];
+
+      sum_in_r += src_ptr[0];
+      sum_in_g += src_ptr[1];
+      sum_in_b += src_ptr[2];
+      sum_in_a += src_ptr[3];
+      sum_r += sum_in_r;
+      sum_g += sum_in_g;
+      sum_b += sum_in_b;
+      sum_a += sum_in_a;
+
+      ++sp;
+      if (sp >= div)
+        sp = 0;
+      stack_ptr = &stack[sp * 4];
+
+      sum_out_r += stack_ptr[0];
+      sum_out_g += stack_ptr[1];
+      sum_out_b += stack_ptr[2];
+      sum_out_a += stack_ptr[3];
+      sum_in_r -= stack_ptr[0];
+      sum_in_g -= stack_ptr[1];
+      sum_in_b -= stack_ptr[2];
+      sum_in_a -= stack_ptr[3];
+    }
+  }
+
+  cairo_surface_mark_dirty(img);
+  delete[] stack;
+}
+
+void uxdevice::platform::TEXTSHADOW::invoke(const DisplayUnitContext &context) {
+
 }
 
 /**
@@ -1263,22 +1589,10 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-#if defined(USE_IMAGE_MAGICK)
-  if (context.IMAGE()->type != IMAGE::ImageSystemType::cairo_type)
-    context.IMAGE()->toCairo();
-#endif
-
   cairo_set_source_surface(context.cr, context.IMAGE()->cairo,
                            context.AREA()->x, context.AREA()->y);
   cairo_mask_surface(context.cr, context.IMAGE()->cairo, context.AREA()->x,
                      context.AREA()->y);
-#if 0
-  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
-                  context.AREA()->w, context.AREA()->h);
-  cairo_set_source_surface(context.cr, context.IMAGE()->surface,
-                           context.AREA()->x, context.AREA()->y);
-  cairo_fill(context.cr);
-#endif
 }
 
 /**
@@ -1308,14 +1622,6 @@ void uxdevice::platform::DRAWBOX::invoke(const DisplayUnitContext &context) {
                           context.PEN()->b, context.PEN()->a);
     cairo_stroke(context.cr);
   }
-
-#if 0
-  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
-                  context.AREA()->w, context.AREA()->h);
-  cairo_set_source_surface(context.cr, context.IMAGE()->surface,
-                           context.AREA()->x, context.AREA()->y);
-  cairo_fill(context.cr);
-#endif
 }
 
 /**
@@ -1345,133 +1651,9 @@ void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
 void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
   if (bLoaded)
     return;
-
-#if defined(USE_IMAGE_MAGICK)
-
-  magick = Magick::Image();
-  magick.type(Magick::TrueColorType);
-  magick.backgroundColor("None");
-  magick.read(context.IMAGE()->fileName);
-  Magick::Color bg_color = magick.pixelColor(0, 0);
-  magick.transparent(bg_color);
-  type = ImageSystemType::magick_type;
-  cairo = nullptr;
-
-#else
   cairo = cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
-
-
-#endif // USE_IMAGE_MAGICK
   bLoaded = true;
 }
-
-#if 0
-
-function gaussBlur_4 (scl, tcl, w, h, r) {
-    var bxs = boxesForGauss(r, 3);
-    boxBlur_4 (scl, tcl, w, h, (bxs[0]-1)/2);
-    boxBlur_4 (tcl, scl, w, h, (bxs[1]-1)/2);
-    boxBlur_4 (scl, tcl, w, h, (bxs[2]-1)/2);
-}
-function boxBlur_4 (scl, tcl, w, h, r) {
-    for(var i=0; i<scl.length; i++) tcl[i] = scl[i];
-    boxBlurH_4(tcl, scl, w, h, r);
-    boxBlurT_4(scl, tcl, w, h, r);
-}
-function boxBlurH_4 (scl, tcl, w, h, r) {
-    var iarr = 1 / (r+r+1);
-    for(var i=0; i<h; i++) {
-        var ti = i*w, li = ti, ri = ti+r;
-        var fv = scl[ti], lv = scl[ti+w-1], val = (r+1)*fv;
-        for(var j=0; j<r; j++) val += scl[ti+j];
-        for(var j=0  ; j<=r ; j++) { val += scl[ri++] - fv       ;   tcl[ti++] = Math.round(val*iarr); }
-        for(var j=r+1; j<w-r; j++) { val += scl[ri++] - scl[li++];   tcl[ti++] = Math.round(val*iarr); }
-        for(var j=w-r; j<w  ; j++) { val += lv        - scl[li++];   tcl[ti++] = Math.round(val*iarr); }
-    }
-}
-function boxBlurT_4 (scl, tcl, w, h, r) {
-    var iarr = 1 / (r+r+1);
-    for(var i=0; i<w; i++) {
-        var ti = i, li = ti, ri = ti+r*w;
-        var fv = scl[ti], lv = scl[ti+w*(h-1)], val = (r+1)*fv;
-        for(var j=0; j<r; j++) val += scl[ti+j*w];
-        for(var j=0  ; j<=r ; j++) { val += scl[ri] - fv     ;  tcl[ti] = Math.round(val*iarr);  ri+=w; ti+=w; }
-        for(var j=r+1; j<h-r; j++) { val += scl[ri] - scl[li];  tcl[ti] = Math.round(val*iarr);  li+=w; ri+=w; ti+=w; }
-        for(var j=h-r; j<h  ; j++) { val += lv      - scl[li];  tcl[ti] = Math.round(val*iarr);  li+=w; ti+=w; }
-    }
-}
-#endif // 0
-
-
-#if defined(USE_IMAGE_MAGICK)
-void uxdevice::platform::IMAGE::toCairo(void) {
-  if (type != ImageSystemType::magick_type) {
-    std::stringstream sError;
-    sError << "ERR_ IMAGECHAIN no magick current image. "
-           << "  " << __FILE__ << " " << __func__;
-    throw std::runtime_error(sError.str());
-  }
-
-  cairo_format_t format = CAIRO_FORMAT_ARGB32;
-  int stride = cairo_format_stride_for_width(format, magick.columns());
-  unsigned char *surfacedata =
-      reinterpret_cast<unsigned char *>(malloc(stride * magick.rows()));
-
-  // check endian format for this string,, -->>>>>>>
-  magick.write(0,0,  magick.columns(),magick.rows(),"BGRA",
-    Magick::StorageType::CharPixel,surfacedata);
-
-  cairo = cairo_image_surface_create_for_data(
-      surfacedata, format, magick.columns(), magick.rows(), stride);
-  type = ImageSystemType::cairo_type;
-  magick = nullptr;
-}
-#endif
-
-#if defined(USE_IMAGE_MAGICK)
-void uxdevice::platform::IMAGE::toMagick(void) {
-  if (cairo == nullptr) {
-    std::stringstream sError;
-    sError << "ERR_ IMAGECHAIN no cairo current image. "
-           << "  " << __FILE__ << " " << __func__;
-    throw std::runtime_error(sError.str());
-  }
-
-  string sImageMap;
-  Magick::StorageType store;
-
-  switch (cairo_image_surface_get_format(cairo)) {
-  case CAIRO_FORMAT_ARGB32:
-    sImageMap = "ARGB";
-    store = Magick::StorageType::CharPixel;
-    break;
-  }
-
-  magick.read(cairo_image_surface_get_width(cairo),
-               cairo_image_surface_get_height(cairo), sImageMap,
-               store, cairo_image_surface_get_data(cairo));
-
-
-  type = ImageSystemType::magick_type;
-  cairo_surface_destroy(cairo);
-  cairo = nullptr;
-}
-#endif // defined
-
-#if defined(USE_IMAGE_MAGICK)
-void uxdevice::platform::IMAGEPROCESS::invoke(
-    const DisplayUnitContext &context) {
-  if (bCompleted)
-    return;
-
-  if (context.IMAGE()->type != IMAGE::ImageSystemType::magick_type)
-    context.IMAGE()->toMagick();
-
-  func(&context.IMAGE()->magick);
-
-  bCompleted = true;
-}
-#endif // defined
 
 /**
   \internal
@@ -1534,10 +1716,6 @@ void uxdevice::platform::resize(const int w, const int h) {
 */
 void uxdevice::platform::flip() {
 #if defined(__linux__)
-
-#if defined(USE_IMAGE_MAGICK)
-
-#endif
 
 #elif defined(_WIN64)
   if (!context.pRenderTarget)
