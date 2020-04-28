@@ -36,23 +36,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.openWindow("Information Title", 800, 600);
 
   vis.clear();
-  vis.antiAlias(platform::subPixel);
+  vis.antiAlias(antialias::subPixel);
 
+  vis.textFillNone();
+  vis.textOutlineNone();
+  vis.textShadowNone();
+
+  vis.textAlignment(alignment::justified);
   vis.text("To summarize logic by inspecting the means by which output is "
            "produced provides the capability to offer optimization.");
-  vis.font("DejaVu Sans Bold 19");
-  vis.textShadow(.3, 0, 0,1, 4,1,2);
-   vis.textFill({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1},{4, .8, 0, 0, 1}});
+  vis.font("DejaVu Sans Bold 29");
+  vis.textShadow(Paint({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1}, {4, .8, 0, 0, 1}}), 4, // radius
+                 1, 2);                 // xy offset
+  //vis.textShadow(Paint("/home/anthony/development/platform/bug.png"), 4, // radius
+  //               1, 2);                 // xy offset
+  vis.textFill(0, 1, 0, .2);
   //vis.textFill("/home/anthony/development/platform/bug.png");
-  vis.textOutline(.3, 0, 0, .5);
+  //    Paint({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1}, {4, .8, 0, 0, 1}}));
+  vis.textOutline(Paint("/home/anthony/development/platform/text.png"), 2);
   vis.area(0, 0, 500, 300);
 
-  vis.pen(0, 0, .2, 1);
-  vis.background(0, 0, .5, .3);
+  vis.pen(Paint(0, 0, .2, 1));
+  vis.background("/home/anthony/development/platform/bugu.png");
   vis.drawBox();
 
-  vis.background(1, 1, 1);
-  vis.pen(0xFF0000);
+  vis.background(Paint(1, 1, 1));
+
   vis.drawText();
 
   vis.textFillNone();
@@ -67,11 +76,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   }
   vis.font("DejaVu Sans normal 14");
   vis.text(ss);
-  vis.area(10, 200, 600, 600);
-  // vis.textShadow(0, .1, .0, 2);
+  vis.area(10, 300, 600, 600);
+  vis.textShadow(0, .1, .0, 2);
   vis.pen(0x000fff);
-  vis.textFill("/home/anthony/development/platform/text.png");
-  vis.textOutline(0,0,0,.5);
+
+  // vis.textFill("/home/anthony/development/platform/bug.png");
+  // vis.textOutline(0,0,0,1);
   vis.drawText();
 
   ss.str("");
@@ -81,9 +91,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   vis.text(ss);
   vis.area(650, 30, 1000, 800);
-  vis.pen("brown");
+  vis.pen(0x00ff00);
   vis.textOutlineNone();
-  vis.textShadow(0, .1, .0, 2);
+    vis.textShadowNone();
   vis.textFillNone();
   vis.drawText();
 

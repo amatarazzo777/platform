@@ -236,11 +236,6 @@ uxdevice::platform::platform(const eventHandler &evtDispatcher,
   CoInitialize(NULL);
 
 #endif
-
-#ifdef USE_IMAGE_MAGICK
-  Magick::InitializeMagick("");
-
-#endif
 }
 /**
   \internal
@@ -766,7 +761,7 @@ void uxdevice::platform::messageLoop(void) {
 */
 void uxdevice::platform::clear(void) { DL.clear(); }
 
-void uxdevice::platform::antiAlias(antialias_t antialias) {
+void uxdevice::platform::antiAlias(antialias antialias) {
   DL.push_back(make_unique<ANTIALIAS>(antialias));
 }
 
@@ -791,46 +786,37 @@ void uxdevice::platform::image(const std::string &s) {
 /**
 \brief
 */
+void uxdevice::platform::pen(const Paint &p) {
+  DL.push_back(make_unique<PEN>(p));
+}
 void uxdevice::platform::pen(u_int32_t c) { DL.push_back(make_unique<PEN>(c)); }
-/**
-\brief
-*/
 void uxdevice::platform::pen(const string &c) {
   DL.push_back(make_unique<PEN>(c));
 }
-/**
-\brief
-*/
 void uxdevice::platform::pen(double _r, double _g, double _b) {
   DL.push_back(make_unique<PEN>(_r, _g, _b));
 }
-/**
-\brief
-*/
 void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
   DL.push_back(make_unique<PEN>(_r, _g, _b, _a));
 }
 /**
 \brief
 */
+/**
+\brief
+*/
+void uxdevice::platform::background(const Paint &p) {
+  DL.push_back(make_unique<BACKGROUND>(p));
+}
 void uxdevice::platform::background(u_int32_t c) {
   DL.push_back(make_unique<BACKGROUND>(c));
 }
-/**
-\brief
-*/
 void uxdevice::platform::background(const string &c) {
   DL.push_back(make_unique<BACKGROUND>(c));
 }
-/**
-\brief
-*/
 void uxdevice::platform::background(double _r, double _g, double _b) {
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b));
 }
-/**
-\brief
-*/
 void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b, _a));
@@ -839,6 +825,16 @@ void uxdevice::platform::background(double _r, double _g, double _b,
 /**
 \brief
 */
+void uxdevice::platform::textAlignment(alignment aln) {
+  DL.push_back(make_unique<ALIGN>(aln));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(const Paint &p,double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(p, dWidth));
+}
 void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
 }
@@ -869,8 +865,20 @@ void uxdevice::platform::textOutlineNone(void) {
   DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTOUTLINE)));
 }
 
-void uxdevice::platform::textFill(const string &s) {
-  DL.push_back(make_unique<TEXTFILL>(s));
+void uxdevice::platform::textFill(const Paint &p) {
+  DL.push_back(make_unique<TEXTFILL>(p));
+}
+void uxdevice::platform::textFill(u_int32_t c) {
+  DL.push_back(make_unique<TEXTFILL>(c));
+}
+void uxdevice::platform::textFill(const string &c) {
+  DL.push_back(make_unique<TEXTFILL>(c));
+}
+void uxdevice::platform::textFill(double _r, double _g, double _b) {
+  DL.push_back(make_unique<TEXTFILL>(_r, _g, _b));
+}
+void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
+  DL.push_back(make_unique<TEXTFILL>(_r, _g, _b, _a));
 }
 
 void uxdevice::platform::textFill(const ColorStops &s) {
@@ -885,6 +893,10 @@ void uxdevice::platform::textFillNone(void) {
 /**
 \brief
 */
+void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
+                                    double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(p, r, xOffset, yOffset));
+}
 void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
                                     double yOffset) {
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
@@ -946,6 +958,148 @@ void uxdevice::platform::drawImage(void) {
 */
 void uxdevice::platform::drawBox(void) { DL.push_back(make_unique<DRAWBOX>()); }
 
+uxdevice::Paint::Paint(u_int32_t c) {
+  u_int8_t _r = c >> 16;
+  u_int8_t _g = c >> 8;
+  u_int8_t _b = c;
+  u_int8_t _a = c >> 24;
+
+  r = _r / 255.0;
+  g = _g / 255.0;
+  b = _b / 255.0;
+  a = 1.0;
+  type = paintType::color;
+}
+
+uxdevice::Paint::Paint(double _r, double _g, double _b) {
+  r = _r;
+  g = _g;
+  b = _b;
+  a = 1.0;
+  type = paintType::color;
+}
+
+uxdevice::Paint::Paint(double _r, double _g, double _b, double _a) {
+  r = _r;
+  g = _g;
+  b = _b;
+  a = _a;
+  type = paintType::color;
+}
+uxdevice::Paint::Paint(const std::string &n) {
+  // if it is a file name,
+  if (n.find(".png") != std::string::npos ||
+      n.find(".svg") != std::string::npos) {
+    image = cairo_image_surface_create_from_png(n.data());
+    pattern = cairo_pattern_create_for_surface(image);
+    cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REFLECT);
+    cairo_pattern_set_filter(pattern, CAIRO_FILTER_BILINEAR);
+    bLoaded = true;
+    type = paintType::pattern;
+
+  } else if (linearGradient(n)) {
+
+  } else if (radialGradient(n)) {
+
+  } else if (patch(n)) {
+
+  } else if (pango_color_parse(&pangoColor, n.data())) {
+    r = pangoColor.red / 65535.0;
+    g = pangoColor.blue / 65535.0;
+    b = pangoColor.green / 65535.0;
+    // a = pangoColor.alpha / 65535.0;
+    type = paintType::color;
+  }
+}
+
+uxdevice::Paint::Paint(const ColorStops &stops) {
+  pattern = cairo_pattern_create_linear(0, 0, 0, 15);
+  cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
+  for (auto &n : stops) {
+    cairo_pattern_add_color_stop_rgba(pattern, n.offset, n.r, n.g, n.g, n.a);
+  }
+  type = paintType::pattern;
+}
+
+uxdevice::Paint::~Paint() {
+  if (pattern)
+    cairo_pattern_destroy(pattern);
+  if (image)
+    cairo_surface_destroy(image);
+}
+
+// parse web formats
+// linear-gradient(to bottom, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
+// 51%,#7db9e8 100%); linear-gradient(to right, #1e5799 0%,#2989d8 50%,#207cca
+// 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(135deg, #1e5799 0%,#2989d8
+// 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(45deg, #1e5799
+// 0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); radial-gradient(ellipse
+// at center, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%);
+
+bool uxdevice::Paint::linearGradient(const std::string &s) {
+  return s.find("linear-gradient") != std::string::npos;
+}
+
+bool uxdevice::Paint::radialGradient(const std::string &s) {
+  return s.find("radial-gradient") != std::string::npos;
+}
+
+bool uxdevice::Paint::patch(const std::string &s) { return false; }
+
+void uxdevice::Paint::emit(cairo_t *cr) const {
+  switch (type) {
+  case paintType::color:
+    cairo_set_source_rgba(cr, r, g, b, a);
+    break;
+  case paintType::pattern:
+    cairo_set_source(cr, pattern);
+    break;
+  case paintType::image:
+    cairo_set_source_surface(cr, image, 0, 0);
+    break;
+  }
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::save(void) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_save, _1);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+/**
+\brief
+*/
+void uxdevice::platform::restore(void) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_restore, _1);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+void uxdevice::platform::push(content c) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func;
+  if (c == content::all) {
+    func = std::bind(cairo_push_group, _1);
+  } else {
+    func = std::bind(cairo_push_group_with_content, _1,
+                     static_cast<cairo_content_t>(c));
+  }
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+void uxdevice::platform::pop(bool bToSource) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func;
+  if (bToSource) {
+    func = std::bind(cairo_pop_group_to_source, _1);
+  } else {
+    func = std::bind(cairo_pop_group, _1);
+  }
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
 /**
 \brief
 */
@@ -973,58 +1127,233 @@ void uxdevice::platform::scale(double x, double y) {
 /**
 \brief
 */
+void uxdevice::platform::transform(const Matrix &m) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m.data);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+/**
+\brief
+*/
+void uxdevice::platform::matrix(const Matrix &m) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m.data);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+/**
+\brief
+*/
+void uxdevice::platform::identity(void) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_identity_matrix, _1);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
 
+/**
+\brief
+*/
+void uxdevice::platform::device(double &x, double &y) {
+  using namespace std::placeholders;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x;
+    double _y = y;
+    cairo_user_to_device(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+/**
+\brief
+*/
+void uxdevice::platform::deviceDistance(double &x, double &y) {
+  using namespace std::placeholders;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x;
+    double _y = y;
+    cairo_user_to_device_distance(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+/**
+\brief
+*/
+void uxdevice::platform::user(double &x, double &y) {
+  using namespace std::placeholders;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x, _y = y;
+    cairo_device_to_user(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::userDistance(double &x, double &y) {
+  using namespace std::placeholders;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x, _y = y;
+    cairo_device_to_user_distance(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::cap(lineCap c) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::join(lineJoin j) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::lineWidth(double dWidth) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::miterLimit(double dLimit) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::dashes(const std::vector<double> &dashes,
+                                double offset) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::tollerance(double _t) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::op(op_t _op) {
+  using namespace std::placeholders;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::source(const Paint &p) {
+  using namespace std::placeholders;
+  auto fn = [](cairo_t *cr, const Paint &p) { p.emit(cr); };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, p);
+  DL.push_back(make_unique<FUNCTION>(func));
+}
+
+/**
+\brief
+*/
 void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
-                             double angle2) {
+                             double angle2, bool bNegative) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func =
-      std::bind(cairo_arc, _1, xc, yc, radius, angle1, angle2);
+  CAIRO_FUNCTION func;
+  if (bNegative) {
+    func = std::bind(cairo_arc_negative, _1, xc, yc, radius, angle1, angle2);
+  } else {
+    func = std::bind(cairo_arc, _1, xc, yc, radius, angle1, angle2);
+  }
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
 /**
 \brief
 */
-void uxdevice::platform::arc_negative(double xc, double yc, double radius,
-                                      double angle1, double angle2) {
+void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
+                               double x3, double y3, bool bRelative) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func =
-      std::bind(cairo_arc_negative, _1, xc, yc, radius, angle1, angle2);
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_curve_to, _1, x1, y1, x2, y2, x3, y3);
+  } else {
+    func = std::bind(cairo_curve_to, _1, x1, y1, x2, y2, x3, y3);
+  }
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
 /**
 \brief
 */
-void uxdevice::platform::curve_to(double x1, double y1, double x2, double y2,
-                                  double x3, double y3) {
+void uxdevice::platform::line(double x, double y, bool bRelative) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_curve_to, _1, x1, y1, x2, y2, x3, y3);
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_line_to, _1, x, y);
+  } else {
+    func = std::bind(cairo_line_to, _1, x, y);
+  }
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
 /**
 \brief
 */
-void uxdevice::platform::line_to(double x, double y) {
+void uxdevice::platform::stroke(bool bPreserve) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_line_to, _1, x, y);
+  CAIRO_FUNCTION func;
+  if (bPreserve) {
+    func = std::bind(cairo_stroke_preserve, _1);
+  } else {
+    func = std::bind(cairo_stroke, _1);
+  }
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
 /**
 \brief
 */
-void uxdevice::platform::stroke(void) {
-  using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_stroke, _1);
-  DL.push_back(make_unique<FUNCTION>(func));
-}
-
-/**
-\brief
-*/
-void uxdevice::platform::move_to(double x, double y) {
+void uxdevice::platform::move(double x, double y, bool bRelative) {
   using namespace std::placeholders;
   CAIRO_FUNCTION func = std::bind(cairo_move_to, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1041,8 +1370,6 @@ void uxdevice::platform::rectangle(double x, double y, double width,
 }
 
 /***************************************************************************/
-void uxdevice::platform::CLEAROPTION::invoke(
-    const DisplayUnitContext &context) {}
 
 /**
 \internal
@@ -1054,12 +1381,6 @@ void uxdevice::platform::AREA::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
-*/
-void uxdevice::platform::STRING::invoke(const DisplayUnitContext &context) {}
-
-/**
-\internal
 \brief The FONT object provides contextual font object for library.
 */
 void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {
@@ -1068,37 +1389,15 @@ void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief Sets the alignment on the textual layout. PANGO supported,
-
-*/
-void uxdevice::platform::ALIGN::invoke(const DisplayUnitContext &context) {}
-
-/**
-\internal
 \brief Maps the last event defined.
 */
-void uxdevice::platform::EVENT::invoke(const DisplayUnitContext &context) {}
 
-void uxdevice::platform::ANTIALIAS::invoke(const DisplayUnitContext &context) {}
-
-void uxdevice::platform::TEXTOUTLINE::invoke(
-    const DisplayUnitContext &context) {}
-
-void uxdevice::platform::TEXTFILL::invoke(const DisplayUnitContext &context) {
-  // load texture if does not exist
-  if (bImage && !bLoaded) {
-    image = cairo_image_surface_create_from_png(fileName.data());
-    paint = cairo_pattern_create_for_surface(image);
-    cairo_pattern_set_extend(paint, CAIRO_EXTEND_REFLECT);
-    cairo_pattern_set_filter(paint, CAIRO_FILTER_BILINEAR);
-    bLoaded = true;
-
-  } else if (bGradient && !paint) {
-    paint = cairo_pattern_create_linear(0, 0, 0, 15);
-    cairo_pattern_set_extend(paint, CAIRO_EXTEND_REPEAT);
-    for (auto &n : stops) {
-      cairo_pattern_add_color_stop_rgba(paint, n.offset, n.r, n.g, n.g, n.a);
-    }
+void uxdevice::platform::ALIGN::emit(PangoLayout *layout) {
+  if (setting == alignment::justified) {
+    pango_layout_set_justify(layout, true);
+  } else {
+    pango_layout_set_justify(layout, false);
+    pango_layout_set_alignment(layout, static_cast<PangoAlignment>(setting));
   }
 }
 
@@ -1124,9 +1423,7 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
     cairo_t *textCr = cairo_create(textImage);
 
     if (context.validateANTIALIAS()) {
-      cairo_set_antialias(textCr, context.ANTIALIAS()->setting);
-    } else {
-      cairo_set_antialias(textCr, cairo_antialias_t::CAIRO_ANTIALIAS_DEFAULT);
+      context.ANTIALIAS()->emit(textCr);
     }
 
     // clear the image with transparency
@@ -1136,6 +1433,10 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
     layout = pango_cairo_create_layout(textCr);
     pango_layout_set_text(layout, context.STRING()->data.data(), -1);
     pango_layout_set_font_description(layout, context.FONT()->fontDescription);
+
+    if (context.validateALIGN()) {
+      context.ALIGN()->emit(layout);
+    }
 
     // pangoColor
     pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
@@ -1170,33 +1471,27 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
 
       // text is filled and outlined.
       if (bFilled && bOutline) {
-        cairo_set_source(textCr, context.TEXTFILL()->paint);
+        context.TEXTFILL()->emit(textCr);
         cairo_fill_preserve(textCr);
-
-        cairo_set_source_rgba(
-            textCr, context.TEXTOUTLINE()->r, context.TEXTOUTLINE()->g,
-            context.TEXTOUTLINE()->b, context.TEXTOUTLINE()->a);
+        context.TEXTOUTLINE()->emit(textCr);
         cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
         cairo_stroke(textCr);
 
         // text is only filled.
       } else if (bFilled) {
-        cairo_set_source(textCr, context.TEXTFILL()->paint);
+        context.TEXTFILL()->emit(textCr);
         cairo_fill(textCr);
 
         // text is only outlined.
       } else if (bOutline) {
-        cairo_set_source_rgba(
-            textCr, context.TEXTOUTLINE()->r, context.TEXTOUTLINE()->g,
-            context.TEXTOUTLINE()->b, context.TEXTOUTLINE()->a);
+        context.TEXTOUTLINE()->emit(textCr);
         cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
         cairo_stroke(textCr);
       }
 
     } else {
       // no outline or fill defined, therefore the pen is used.
-      cairo_set_source_rgba(textCr, context.PEN()->r, context.PEN()->g,
-                            context.PEN()->b, context.PEN()->a);
+      context.PEN()->emit(textCr);
       pango_cairo_show_layout(textCr, layout);
     }
 
@@ -1215,16 +1510,11 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
       shadowImage = cairo_image_surface_create(format, context.AREA()->w,
                                                context.AREA()->h);
       cairo_t *shadowCr = cairo_create(shadowImage);
-      cairo_set_source_rgba(shadowCr, context.TEXTSHADOW()->color.r,
-                            context.TEXTSHADOW()->color.g,
-                            context.TEXTSHADOW()->color.b, 0);
+      cairo_set_source_rgba(shadowCr, 0, 0, 0, 0);
       cairo_paint(shadowCr);
 
       if (context.validateANTIALIAS()) {
-        cairo_set_antialias(shadowCr, context.ANTIALIAS()->setting);
-      } else {
-        cairo_set_antialias(shadowCr,
-                            cairo_antialias_t::CAIRO_ANTIALIAS_DEFAULT);
+        context.ANTIALIAS()->emit(shadowCr);
       }
 
       // create an image for the text
@@ -1233,11 +1523,11 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
       pango_layout_set_text(layout, context.STRING()->data.data(), -1);
       pango_layout_set_font_description(layout,
                                         context.FONT()->fontDescription);
+      if (context.validateALIGN()) {
+        context.ALIGN()->emit(layout);
+      }
 
-      // pangoColor
-      cairo_set_source_rgba(shadowCr, context.TEXTSHADOW()->color.r,
-                            context.TEXTSHADOW()->color.g,
-                            context.TEXTSHADOW()->color.b, 1);
+      context.TEXTSHADOW()->emit(shadowCr);
 
       pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
       pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
@@ -1251,10 +1541,7 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
       layout = nullptr;
     }
     cairo_save(context.cr);
-
-    cairo_set_source_rgba(context.cr, context.TEXTSHADOW()->color.r,
-                          context.TEXTSHADOW()->color.g,
-                          context.TEXTSHADOW()->color.b, 1);
+    context.TEXTSHADOW()->emit(context.cr);
     cairo_mask_surface(context.cr, shadowImage,
                        context.AREA()->x + context.TEXTSHADOW()->x,
                        context.AREA()->y + context.TEXTSHADOW()->y);
@@ -1572,10 +1859,6 @@ void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
   delete[] stack;
 }
 
-void uxdevice::platform::TEXTSHADOW::invoke(const DisplayUnitContext &context) {
-
-}
-
 /**
 \internal
 \brief The function draws the image
@@ -1612,14 +1895,11 @@ void uxdevice::platform::DRAWBOX::invoke(const DisplayUnitContext &context) {
   cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
                   context.AREA()->w, context.AREA()->h);
   if (context.validateBACKGROUND()) {
-    cairo_set_source_rgba(context.cr, context.BACKGROUND()->r,
-                          context.BACKGROUND()->g, context.BACKGROUND()->b,
-                          context.BACKGROUND()->a);
+    context.BACKGROUND()->emit(context.cr);
     cairo_fill_preserve(context.cr);
   }
   if (context.validatePEN()) {
-    cairo_set_source_rgba(context.cr, context.PEN()->r, context.PEN()->g,
-                          context.PEN()->b, context.PEN()->a);
+    context.PEN()->emit(context.cr);
     cairo_stroke(context.cr);
   }
 }
@@ -1629,7 +1909,7 @@ void uxdevice::platform::DRAWBOX::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
-  cairo_set_source_rgba(context.cr, r, g, b, a);
+  emit(context.cr);
 }
 
 /**
@@ -1637,7 +1917,7 @@ void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::BACKGROUND::invoke(const DisplayUnitContext &context) {
-  cairo_set_source_rgba(context.cr, r, g, b, a);
+  emit(context.cr);
 }
 
 void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
