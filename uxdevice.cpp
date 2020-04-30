@@ -5,8 +5,12 @@
 
 \date 3/26/20
 \version 1.0
+
+
+Box, circles and elipse from NANOSVG
+   NANOSVG  Copyright (c) 2013-14 Mikko Mononen memon@inside.org
 */
-#define PI 3.1415926535
+
 
 /**
 \brief rendering and platform services.
@@ -357,6 +361,8 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
     throw std::runtime_error(sError.str());
   }
 
+  // resize to windowWidth,windowHeight
+  resize(context.windowWidth, context.windowHeight);
   /* you init the connection and screen_nbr */
   xcb_depth_iterator_t depth_iter;
 
@@ -441,7 +447,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
 
 /**
   \internal
-  \brief Initalize the direct 3 video system.
+  \brief Initialize the directx video system.
 
   Orginal code from
 */
@@ -832,7 +838,7 @@ void uxdevice::platform::textAlignment(alignment aln) {
 /**
 \brief
 */
-void uxdevice::platform::textOutline(const Paint &p,double dWidth) {
+void uxdevice::platform::textOutline(const Paint &p, double dWidth) {
   DL.push_back(make_unique<TEXTOUTLINE>(p, dWidth));
 }
 void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
@@ -939,8 +945,20 @@ void uxdevice::platform::font(const std::string &s) {
 \brief
 */
 void uxdevice::platform::area(double x, double y, double w, double h) {
-  DL.push_back(make_unique<AREA>(x, y, w, h));
+  DL.push_back(make_unique<AREA>(areaType::rectangle, x, y, w, h));
 }
+void uxdevice::platform::area(double x, double y, double w, double h, double rx,
+                              double ry) {
+  DL.push_back(make_unique<AREA>(x, y, w, h, rx, ry));
+}
+void uxdevice::platform::areaCircle(double cx, double cy, double r) {
+  DL.push_back(make_unique<AREA>(cx, cy, r));
+}
+void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
+                                     double ry) {
+  DL.push_back(make_unique<AREA>(areaType::ellipse, cx, cy, rx, ry));
+}
+
 /**
 \brief
 */
@@ -956,7 +974,9 @@ void uxdevice::platform::drawImage(void) {
 /**
 \brief
 */
-void uxdevice::platform::drawBox(void) { DL.push_back(make_unique<DRAWBOX>()); }
+void uxdevice::platform::drawArea(void) {
+  DL.push_back(make_unique<DRAWAREA>());
+}
 
 uxdevice::Paint::Paint(u_int32_t c) {
   u_int8_t _r = c >> 16;
@@ -987,13 +1007,14 @@ uxdevice::Paint::Paint(double _r, double _g, double _b, double _a) {
   type = paintType::color;
 }
 uxdevice::Paint::Paint(const std::string &n) {
+
   // if it is a file name,
   if (n.find(".png") != std::string::npos ||
       n.find(".svg") != std::string::npos) {
     image = cairo_image_surface_create_from_png(n.data());
     pattern = cairo_pattern_create_for_surface(image);
-    cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REFLECT);
-    cairo_pattern_set_filter(pattern, CAIRO_FILTER_BILINEAR);
+    cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
+    cairo_pattern_set_filter(pattern, CAIRO_FILTER_FAST);
     bLoaded = true;
     type = paintType::pattern;
 
@@ -1005,19 +1026,20 @@ uxdevice::Paint::Paint(const std::string &n) {
 
   } else if (pango_color_parse(&pangoColor, n.data())) {
     r = pangoColor.red / 65535.0;
-    g = pangoColor.blue / 65535.0;
-    b = pangoColor.green / 65535.0;
+    g = pangoColor.green / 65535.0;
+    b = pangoColor.blue / 65535.0;
     // a = pangoColor.alpha / 65535.0;
     type = paintType::color;
   }
 }
 
 uxdevice::Paint::Paint(const ColorStops &stops) {
-  pattern = cairo_pattern_create_linear(0, 0, 0, 15);
+  pattern = cairo_pattern_create_linear(0, 0, 0, 300);
   cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
   for (auto &n : stops) {
     cairo_pattern_add_color_stop_rgba(pattern, n.offset, n.r, n.g, n.g, n.a);
   }
+
   type = paintType::pattern;
 }
 
@@ -1052,9 +1074,27 @@ void uxdevice::Paint::emit(cairo_t *cr) const {
     cairo_set_source_rgba(cr, r, g, b, a);
     break;
   case paintType::pattern:
+    cairo_pattern_set_matrix(pattern, &_matrix);
     cairo_set_source(cr, pattern);
     break;
   case paintType::image:
+    cairo_pattern_set_matrix(pattern, &_matrix);
+    cairo_set_source_surface(cr, image, 0, 0);
+    break;
+  }
+}
+
+void uxdevice::Paint::emit(cairo_t *cr, double w, double h) const {
+  switch (type) {
+  case paintType::color:
+    cairo_set_source_rgba(cr, r, g, b, a);
+    break;
+  case paintType::pattern:
+    cairo_pattern_set_matrix(pattern, &_matrix);
+    cairo_set_source(cr, pattern);
+    break;
+  case paintType::image:
+    cairo_pattern_set_matrix(pattern, &_matrix);
     cairo_set_source_surface(cr, image, 0, 0);
     break;
   }
@@ -1129,7 +1169,7 @@ void uxdevice::platform::scale(double x, double y) {
 */
 void uxdevice::platform::transform(const Matrix &m) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m.data);
+  CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
 }
 /**
@@ -1137,7 +1177,7 @@ void uxdevice::platform::transform(const Matrix &m) {
 */
 void uxdevice::platform::matrix(const Matrix &m) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m.data);
+  CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
 }
 /**
@@ -1882,7 +1922,7 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
 \internal
 \brief The function draws the image
 */
-void uxdevice::platform::DRAWBOX::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
   // check the context before operating
   if (!context.validateAREA() &&
       (!context.validateBACKGROUND() || !context.validatePEN())) {
@@ -1891,11 +1931,72 @@ void uxdevice::platform::DRAWBOX::invoke(const DisplayUnitContext &context) {
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
+  const AREA &area = *context.AREA();
 
-  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
-                  context.AREA()->w, context.AREA()->h);
+  switch (context.AREA()->type) {
+  case areaType::rectangle:
+    cairo_rectangle(context.cr, area.x, area.y, area.w, area.h);
+    break;
+  case areaType::roundedRectangle:
+    cairo_move_to(context.cr, area.x + area.rx, area.y);
+    cairo_line_to(context.cr, area.x + area.w - area.rx, area.y);
+    cairo_curve_to(context.cr, area.x + area.w - area.rx * (1 - KAPPA90),
+                   area.y, area.x + area.w, area.y + area.ry * (1 - KAPPA90),
+                   area.x + area.w, area.y + area.ry);
+    cairo_line_to(context.cr, area.x + area.w, area.y + area.h - area.ry);
+    cairo_curve_to(context.cr, area.x + area.w,
+                   area.y + area.h - area.ry * (1 - KAPPA90),
+                   area.x + area.w - area.rx * (1 - KAPPA90), area.y + area.h,
+                   area.x + area.w - area.rx, area.y + area.h);
+    cairo_line_to(context.cr, area.x + area.rx, area.y + area.h);
+    cairo_curve_to(context.cr, area.x + area.rx * (1 - KAPPA90),
+                   area.y + area.h, area.x,
+                   area.y + area.h - area.ry * (1 - KAPPA90), area.x,
+                   area.y + area.h - area.ry);
+    cairo_line_to(context.cr, area.x, area.y + area.ry);
+    cairo_curve_to(context.cr, area.x, area.y + area.ry * (1 - KAPPA90),
+                   area.x + area.rx * (1 - KAPPA90), area.y, area.x + area.rx,
+                   area.y);
+    cairo_close_path (context.cr);
+    break;
+  case areaType::circle:
+    cairo_move_to(context.cr, area.x + area.rx, area.y);
+    cairo_curve_to(context.cr, area.x + area.rx, area.y + area.rx * KAPPA90,
+                   area.x + area.rx * KAPPA90, area.y + area.rx, area.x,
+                   area.y + area.rx);
+    cairo_curve_to(context.cr, area.x - area.rx * KAPPA90, area.y + area.rx,
+                   area.x - area.rx, area.y + area.rx * KAPPA90,
+                   area.x - area.rx, area.y);
+    cairo_curve_to(context.cr, area.x - area.rx, area.y - area.rx * KAPPA90,
+                   area.x - area.rx * KAPPA90, area.y - area.rx, area.x,
+                   area.y - area.rx);
+    cairo_curve_to(context.cr, area.x + area.rx * KAPPA90, area.y - area.rx,
+                   area.x + area.rx, area.y - area.rx * KAPPA90,
+                   area.x + area.rx, area.y);
+    cairo_close_path (context.cr);
+    break;
+
+  case areaType::ellipse:
+    cairo_move_to(context.cr, area.x + area.rx, area.y);
+    cairo_curve_to(context.cr, area.x + area.rx, area.y + area.ry * KAPPA90,
+                   area.x + area.rx * KAPPA90, area.y + area.ry, area.x,
+                   area.y + area.ry);
+    cairo_curve_to(context.cr, area.x - area.rx * KAPPA90, area.y + area.ry,
+                   area.x - area.rx, area.y + area.ry * KAPPA90,
+                   area.x - area.rx, area.y);
+    cairo_curve_to(context.cr, area.x - area.rx, area.y - area.ry * KAPPA90,
+                   area.x - area.rx * KAPPA90, area.y - area.ry, area.x,
+                   area.y - area.ry);
+    cairo_curve_to(context.cr, area.x + area.rx * KAPPA90, area.y - area.ry,
+                   area.x + area.rx, area.y - area.ry * KAPPA90,
+                   area.x + area.rx, area.y);
+    cairo_close_path (context.cr);
+    break;
+  }
+
   if (context.validateBACKGROUND()) {
-    context.BACKGROUND()->emit(context.cr);
+    context.BACKGROUND()->emit(context.cr, context.AREA()->w,
+                               context.AREA()->h);
     cairo_fill_preserve(context.cr);
   }
   if (context.validatePEN()) {
@@ -1931,7 +2032,14 @@ void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
 void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
   if (bLoaded)
     return;
-  cairo = cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
+
+  if (context.IMAGE()->fileName.find(".png") != std::string::npos) {
+    cairo =
+        cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
+  } else  if (context.IMAGE()->fileName.find(".svg") != std::string::npos) {
+
+  }
+
   bLoaded = true;
 }
 
@@ -1955,6 +2063,7 @@ void uxdevice::platform::resize(const int w, const int h) {
 #if defined(__linux__)
   if (context.xcbSurface) {
     cairo_xcb_surface_set_size(context.xcbSurface, w, h);
+
     context.preclear = true;
   }
 

@@ -42,69 +42,76 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.textOutlineNone();
   vis.textShadowNone();
 
-  vis.textAlignment(alignment::justified);
-  vis.text("To summarize logic by inspecting the means by which output is "
-           "produced provides the capability to offer optimization.");
-  vis.font("DejaVu Sans Bold 29");
-  vis.textShadow(Paint({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1}, {4, .8, 0, 0, 1}}), 4, // radius
-                 1, 2);                 // xy offset
-  //vis.textShadow(Paint("/home/anthony/development/platform/bug.png"), 4, // radius
-  //               1, 2);                 // xy offset
-  vis.textFill(0, 1, 0, .2);
-  //vis.textFill("/home/anthony/development/platform/bug.png");
-  //    Paint({{0, 1, .4, .4, 1}, {2, .4, .4, .4, 1}, {4, .8, 0, 0, 1}}));
-  vis.textOutline(Paint("/home/anthony/development/platform/text.png"), 2);
-  vis.area(0, 0, 500, 300);
+  vis.textAlignment(alignment::left);
+  vis.text(
+      "The sun sets casting its refraction upon the mountain side. "
+      "The glistening oil coats upon the ravens are a remark of healthiness."
+      "One that is pronounced during the day and in the moonlight."
+      "At home, a cave dweller sees this all at once. These are indeed fine "
+      "things."
+      "The warmth of the sun decays as thousands of brilliant stars dictate "
+      "the continual persistence of the system. A remarkable sight. A heavenly "
+      "home.");
+  vis.font("DejaVu Sans Bold 14");
+  vis.area(0, 0, 800, 600, 120, 120);
 
-  vis.pen(Paint(0, 0, .2, 1));
-  vis.background("/home/anthony/development/platform/bugu.png");
-  vis.drawBox();
+  vis.pen(Paint("white"));
 
-  vis.background(Paint(1, 1, 1));
+  Paint bugs = Paint("/home/anthony/development/platform/bugu.png");
+  bugs.rotate(3.14 / 180 * 10);
+  bugs.scale(1.15, 1.15);
+  bugs.translate(-1, -1);
 
+  bugs.extend(extendType::reflect);
+  bugs.filter(filterType::bilinear);
+
+  vis.background(bugs);
+  vis.drawArea();
+  vis.pen(.3,.4,.3);
+  vis.lineWidth(40);
+  vis.background(Paint(.2, .2, .2, .7));
+  vis.drawArea();
+
+  vis.pen(Paint("white"));
   vis.drawText();
 
-  vis.textFillNone();
-  vis.textOutlineNone();
-  vis.textShadowNone();
+  vis.area(100, 100, 20);
+  Paint bugs2 = Paint("/home/anthony/development/platform/bug.png");
+  vis.lineWidth(4);
+  bugs2.extend(extendType::reflect);
+  bugs2.filter(filterType::bilinear);
+  vis.background(bugs2);
+  vis.drawArea();
 
-  stringstream ss;
-  for (int i = 0; i < 30; i++) {
-    ss << i
-       << ". Through the progression of learning, better results can make an "
-          "appearance.\n";
-  }
-  vis.font("DejaVu Sans normal 14");
-  vis.text(ss);
-  vis.area(10, 300, 600, 600);
-  vis.textShadow(0, .1, .0, 2);
-  vis.pen(0x000fff);
 
-  // vis.textFill("/home/anthony/development/platform/bug.png");
-  // vis.textOutline(0,0,0,1);
+  vis.areaEllipse(400, 300, 200, 100);
+  Paint bugs3 = Paint("/home/anthony/development/platform/text.png");
+
+  bugs3.extend(extendType::reflect);
+  bugs3.filter(filterType::bilinear);
+  vis.background(bugs3);
+  vis.drawArea();
+
+  //button
+  vis.translate(200,200);
+  vis.area(25.702381,108.0119,167.06548,61.988094,17.41297, 14.174099);
+  vis.background(0,0,.7,.58);
+  vis.lineWidth(.86);
+  vis.pen(0,.6,8,1);
+  vis.drawArea();
+
+  vis.translate(0,16);
+  vis.pen(1,1,1);
+  vis.textAlignment(alignment::center);
+  vis.text("OK");
+  vis.textShadow(0,0,0);
   vis.drawText();
+  vis.translate(0,-16);
+  vis.area(25.702381,108.0119,167.06548,61.988094,17.41297, 14.174099);
+  vis.background(Paint({{0,0,0,.5,1},{1,0,0,.5,0}}));
+  vis.drawArea();
 
-  ss.str("");
-  for (int i = 0; i < 30; i++) {
-    ss << i << ". A screen full of text is easily rendered.\n";
-  }
 
-  vis.text(ss);
-  vis.area(650, 30, 1000, 800);
-  vis.pen(0x00ff00);
-  vis.textOutlineNone();
-    vis.textShadowNone();
-  vis.textFillNone();
-  vis.drawText();
-
-  vis.image("/home/anthony/source/nanosvg/example/screenshot-2.png");
-
-  vis.area(200, 200, 300, 500);
-  vis.drawImage();
-
-  vis.image("/home/anthony/source/nanosvg/example/draw.png");
-  vis.area(500, 200, 900, 500);
-  vis.drawImage();
 
   vis.processEvents();
 

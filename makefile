@@ -1,9 +1,9 @@
 CC=clang-9
 #CC=g++
-CFLAGS=-std=c++17 -Os `Magick++-config --cppflags --cxxflags`
+CFLAGS=-std=c++17 -Os 
 INCLUDES=-I/projects/guidom `pkg-config --cflags cairo pango pangocairo` -fexceptions
 
-LFLAGS=`pkg-config --libs cairo pango pangocairo ` `Magick++-config --ldflags --libs`
+LFLAGS=`pkg-config --libs cairo pango pangocairo ` 
 
 debug: CFLAGS += -g
 debug: vis.out

@@ -4,8 +4,18 @@
 \date 11/19/19
 \version 1.0
 \brief interface for the platform.
+
+Box, circles and elipse from NANOSVG
+   NANOSVG  Copyright (c) 2013-14 Mikko Mononen memon@inside.org
+
 */
 #pragma once
+
+
+#define PI (3.14159265358979323846264338327f)
+#define KAPPA90                                                                \
+  (0.5522847493f) // Length proportional to radius of a cubic bezier handle for
+                  // 90deg arcs.
 
 /**
 \addtogroup Library Build Options
@@ -18,21 +28,6 @@ options when compiling the source.
 #define DEFAULT_TEXTFACE "arial"
 #define DEFAULT_TEXTSIZE 12
 #define DEFAULT_TEXTCOLOR 0
-
-/**
-\def USE_PANGO
-\brief THe pango text rendering library is used.
-If this is not used the base cairo text rendering functions are used.
-
-*/
-#define USE_FRAMEBUFFER
-#define USE_SDL
-
-/**
-\def USE_CHROMIUM_EMBEDDED_FRAMEWORK
-\brief The system will be configured to use the CEF system.
-*/
-//#define USE_CHROMIUM_EMBEDDED_FRAMEWORK
 
 /**
 \def USE_DEBUG_CONSOLE
@@ -254,6 +249,22 @@ enum class antialias {
   best = CAIRO_ANTIALIAS_BEST
 };
 
+enum class filterType {
+  fast = CAIRO_FILTER_FAST,
+  good = CAIRO_FILTER_GOOD,
+  best = CAIRO_FILTER_BEST,
+  nearest = CAIRO_FILTER_NEAREST,
+  bilinear = CAIRO_FILTER_BILINEAR,
+  gaussian = CAIRO_FILTER_GAUSSIAN
+};
+
+enum class extendType {
+  none = CAIRO_EXTEND_NONE,
+  repeat = CAIRO_EXTEND_REPEAT,
+  reflect = CAIRO_EXTEND_REFLECT,
+  pad = CAIRO_EXTEND_PAD
+};
+
 enum class lineCap {
   butt = CAIRO_LINE_CAP_BUTT,
   round = CAIRO_LINE_CAP_ROUND,
@@ -265,6 +276,7 @@ enum class lineJoin {
   round = CAIRO_LINE_JOIN_ROUND,
   bevel = CAIRO_LINE_JOIN_BEVEL
 };
+enum class areaType { none, circle, ellipse, rectangle, roundedRectangle };
 
 enum op_t {
   opClear = CAIRO_OPERATOR_CLEAR,
@@ -334,8 +346,48 @@ public:
   double b;
   double a;
 };
+
+using Matrix = class Matrix {
+public:
+  Matrix() { cairo_matrix_init_identity(&_matrix); }
+  void initIdentity(void) { cairo_matrix_init_identity(&_matrix); };
+  void initTranslate(double tx, double ty) {
+    cairo_matrix_init_translate(&_matrix, tx, ty);
+  }
+  void initScale(double sx, double sy) {
+    cairo_matrix_init_scale(&_matrix, sx, sy);
+  }
+  void initRotate(double radians) {
+    cairo_matrix_init_rotate(&_matrix, radians);
+  }
+  void translate(double tx, double ty) {
+    cairo_matrix_translate(&_matrix, tx, ty);
+  }
+  void scale(double sx, double sy) { cairo_matrix_scale(&_matrix, sx, sy); }
+  void rotate(double radians) { cairo_matrix_rotate(&_matrix, radians); }
+  void invert(void) { cairo_matrix_invert(&_matrix); }
+  void multiply(const Matrix &operand, Matrix &result) {
+    cairo_matrix_multiply(&result._matrix, &_matrix, &operand._matrix);
+  }
+  void transformDistance(double &dx, double &dy) {
+    double _dx = dx;
+    double _dy = dy;
+    cairo_matrix_transform_distance(&_matrix, &_dx, &_dy);
+    dx = _dx;
+    dy = _dy;
+  }
+  void transformPoint(double &x, double &y) {
+    double _x = x;
+    double _y = y;
+    cairo_matrix_transform_point(&_matrix, &_x, &_y);
+    x = _y;
+    y = _y;
+  }
+  cairo_matrix_t _matrix;
+};
+
 typedef std::vector<ColorStop> ColorStops;
-using Paint = class Paint {
+using Paint = class Paint : public Matrix {
 public:
   Paint(u_int32_t c);
   Paint(double _r, double _g, double _b);
@@ -343,25 +395,43 @@ public:
   Paint(const std::string &n);
   Paint(const ColorStops &cs);
 
-  Paint(const Paint& other)  {
+  Paint(const Paint &other) {
     type = other.type;
-    pattern = cairo_pattern_reference (other.pattern);
-    image = cairo_surface_reference (other.image);
+    pattern = cairo_pattern_reference(other.pattern);
+    image = cairo_surface_reference(other.image);
     r = other.r;
     g = other.g;
     b = other.b;
     a = other.a;
+    _matrix = other._matrix;
+    _filter = filterType::fast;
+    _extend = extendType::repeat;
+
     pangoColor = other.pangoColor;
     bLoaded = other.bLoaded;
-
-    std::cout << "user-defined copy ctor" <<std::endl << std::flush;
   }
-  Paint ( Paint && )  { std::cout << "Move constructor" <<std::endl << std::flush;  }
-  Paint& operator=(Paint other) { std::cout << "copy assignment, copy-and-swap form" <<std::endl << std::flush;  }
-  Paint& operator=(Paint&& other) { std::cout << "Move assignment operator" <<std::endl << std::flush;  }
+  Paint(Paint &&) {
+    std::cout << "Move constructor" << std::endl << std::flush;
+  }
+  Paint &operator=(Paint other) {
+    std::cout << "copy assignment, copy-and-swap form" << std::endl
+              << std::flush;
+  }
+  Paint &operator=(Paint &&other) {
+    std::cout << "Move assignment operator" << std::endl << std::flush;
+  }
 
   ~Paint();
   void emit(cairo_t *cr) const;
+  void emit(cairo_t *cr, double w, double h) const;
+  void filter(filterType ft) {
+    if (pattern)
+      cairo_pattern_set_filter(pattern, static_cast<cairo_filter_t>(ft));
+  }
+  void extend(extendType et) {
+    if (pattern)
+      cairo_pattern_set_extend(pattern, static_cast<cairo_extend_t>(et));
+  }
 
 private:
   bool linearGradient(const std::string &s);
@@ -370,48 +440,14 @@ private:
 
 private:
   paintType type = paintType::none;
+  filterType _filter = filterType::fast;
+  extendType _extend = extendType::repeat;
+
   cairo_pattern_t *pattern = nullptr;
   cairo_surface_t *image = nullptr;
   double r = 0.0, g = 0.0, b = 0.0, a = 1.0;
   PangoColor pangoColor;
   bool bLoaded = false;
-};
-
-using Matrix = class Matrix {
-public:
-  Matrix() { cairo_matrix_init_identity(&data); }
-  void initIdentity(void) { cairo_matrix_init_identity(&data); };
-  void initTranslate(double tx, double ty) {
-    cairo_matrix_init_translate(&data, tx, ty);
-  }
-  void initScale(double sx, double sy) {
-    cairo_matrix_init_scale(&data, sx, sy);
-  }
-  void initRotate(double radians) { cairo_matrix_init_rotate(&data, radians); }
-  void translate(double tx, double ty) {
-    cairo_matrix_translate(&data, tx, ty);
-  }
-  void scale(double sx, double sy) { cairo_matrix_translate(&data, sx, sy); }
-  void rotate(double radians) { cairo_matrix_rotate(&data, radians); }
-  void invert(void) { cairo_matrix_invert(&data); }
-  void multiply(const Matrix &operand, Matrix &result) {
-    cairo_matrix_multiply(&result.data, &data, &operand.data);
-  }
-  void transformDistance(double &dx, double &dy) {
-    double _dx = dx;
-    double _dy = dy;
-    cairo_matrix_transform_distance(&data, &_dx, &_dy);
-    dx = _dx;
-    dy = _dy;
-  }
-  void transformPoint(double &x, double &y) {
-    double _x = x;
-    double _y = y;
-    cairo_matrix_transform_point(&data, &_x, &_y);
-    x = _y;
-    y = _y;
-  }
-  cairo_matrix_t data;
 };
 
 /**
@@ -449,11 +485,12 @@ public:
   void background(double _r, double _g, double _b);
   void background(double _r, double _g, double _b, double _a);
 
-  void textOutline(const Paint &p, double dWidth);
-  void textOutline(u_int32_t c, double dWidth);
-  void textOutline(const std::string &c, double dWidth);
-  void textOutline(double _r, double _g, double _b, double dWidth);
-  void textOutline(double _r, double _g, double _b, double _a, double dWidth);
+  void textOutline(const Paint &p, double dWidth = 1);
+  void textOutline(u_int32_t c, double dWidth = 1);
+  void textOutline(const std::string &c, double dWidth = 1);
+  void textOutline(double _r, double _g, double _b, double dWidth = 1);
+  void textOutline(double _r, double _g, double _b, double _a,
+                   double dWidth = 1);
   void textOutlineNone(void);
 
   void textFill(const Paint &p);
@@ -488,9 +525,13 @@ public:
 
   void font(const std::string &s);
   void area(double x, double y, double w, double h);
+  void area(double x, double y, double w, double h, double rx, double ry);
+  void area(double cx, double cy, double r) { areaCircle(cx, cy, r); }
+  void areaCircle(double cx, double cy, double r);
+  void areaEllipse(double cx, double cy, double rx, double ry);
   void drawText(void);
   void drawImage(void);
-  void drawBox(void);
+  void drawArea(void);
   void antiAlias(antialias antialias);
 
   void save(void);
@@ -586,7 +627,7 @@ private:
     EVENT_idx,
     DRAWTEXT_idx,
     DRAWIMAGE_idx,
-    DRAWBOX_idx,
+    DRAWAREA_idx,
     CLEAROPTION_idx,
     FUNCTION_idx,
 
@@ -626,10 +667,24 @@ private:
     VIRTUAL_INDEX(AREA);
 
     AREA(void) {}
-    AREA(double _x, double _y, double _w, double _h)
-        : x(_x), y(_y), w(_w), h(_h) {}
+    AREA(double _cx, double _cy, double _r)
+        : x(_cx), y(_cy), rx(_r), type(areaType::circle) {}
+    AREA(areaType _type, double _x, double _y, double p3, double p4)
+        : x(_x), y(_y), type(_type) {
+      if (type == areaType::rectangle) {
+        w = p3;
+        h = p4;
+      } else {
+        rx = p3;
+        ry = p4;
+      }
+    }
+    AREA(double _x, double _y, double _w, double _h, double _rx, double _ry)
+        : x(_x), y(_y), w(_w), h(_h), rx(_rx), ry(_ry),
+          type(areaType::roundedRectangle) {}
     ~AREA() {}
-    double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
+    double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
+    areaType type = areaType::none;
     void invoke(const DisplayUnitContext &context);
   };
 
@@ -816,11 +871,11 @@ private:
     bool bEntire = true;
   };
 
-  using DRAWBOX = class DRAWBOX : public DisplayUnit {
+  using DRAWAREA = class DRAWAREA : public DisplayUnit {
   public:
-    VIRTUAL_INDEX(DRAWBOX);
-    DRAWBOX() {}
-    ~DRAWBOX() {}
+    VIRTUAL_INDEX(DRAWAREA);
+    DRAWAREA() {}
+    ~DRAWAREA() {}
     void invoke(const DisplayUnitContext &context);
 
   private:
@@ -887,7 +942,7 @@ private:
     INDEXED_ACCESSOR(EVENT);
     INDEXED_ACCESSOR(DRAWTEXT);
     INDEXED_ACCESSOR(DRAWIMAGE);
-    INDEXED_ACCESSOR(DRAWBOX);
+    INDEXED_ACCESSOR(DRAWAREA);
 
     INDEXED_ACCESSOR(FUNCTION);
 
