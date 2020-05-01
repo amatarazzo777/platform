@@ -1,9 +1,9 @@
 CC=clang-9
 #CC=g++
 CFLAGS=-std=c++17 -Os 
-INCLUDES=-I/projects/guidom `pkg-config --cflags cairo pango pangocairo` -fexceptions
+INCLUDES=-I/projects/guidom `pkg-config --cflags cairo pango pangocairo  librsvg-2.0` -fexceptions
 
-LFLAGS=`pkg-config --libs cairo pango pangocairo ` 
+LFLAGS=`pkg-config --libs cairo pango pangocairo  librsvg-2.0` 
 
 debug: CFLAGS += -g
 debug: vis.out

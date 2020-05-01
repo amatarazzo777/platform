@@ -5,17 +5,10 @@
 \version 1.0
 \brief interface for the platform.
 
-Box, circles and elipse from NANOSVG
-   NANOSVG  Copyright (c) 2013-14 Mikko Mononen memon@inside.org
-
 */
 #pragma once
 
-
 #define PI (3.14159265358979323846264338327f)
-#define KAPPA90                                                                \
-  (0.5522847493f) // Length proportional to radius of a cubic bezier handle for
-                  // 90deg arcs.
 
 /**
 \addtogroup Library Build Options
@@ -118,6 +111,8 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #include <cairo-xcb.h>
 #include <cairo.h>
 
+#include <glib.h>
+#include <librsvg/rsvg.h>
 #include <pango/pangocairo.h>
 
 std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
@@ -337,15 +332,6 @@ using point = class point {
 public:
   double x = 0, y = 0;
 };
-enum class paintType { none, color, pattern, image };
-using ColorStop = class ColorStop {
-public:
-  double offset;
-  double r;
-  double g;
-  double b;
-  double a;
-};
 
 using Matrix = class Matrix {
 public:
@@ -386,29 +372,63 @@ public:
   cairo_matrix_t _matrix;
 };
 
+/**
+\class Paint
+
+\brief interface for the paint class.
+
+*/
+enum class paintType { none, color, pattern, image };
+enum class gradientType { none, linear, radial };
+
+using ColorStop = class ColorStop {
+public:
+  double offset;
+  double r;
+  double g;
+  double b;
+  double a;
+};
 typedef std::vector<ColorStop> ColorStops;
+
 using Paint = class Paint : public Matrix {
 public:
   Paint(u_int32_t c);
-  Paint(double _r, double _g, double _b);
-  Paint(double _r, double _g, double _b, double _a);
+  Paint(double r, double g, double b);
+  Paint(double r, double g, double b, double a);
   Paint(const std::string &n);
-  Paint(const ColorStops &cs);
+  Paint(const std::string &n, double width, double height);
+
+  Paint(double x0, double y0, double x1, double y1, const ColorStops &_cs);
+  Paint(double cx0, double cy0, double radius0, double cx1, double cy1,
+        double radius1, const ColorStops &cs);
 
   Paint(const Paint &other) {
-    type = other.type;
-    pattern = cairo_pattern_reference(other.pattern);
-    image = cairo_surface_reference(other.image);
-    r = other.r;
-    g = other.g;
-    b = other.b;
-    a = other.a;
-    _matrix = other._matrix;
-    _filter = filterType::fast;
-    _extend = extendType::repeat;
+    _type = other._type;
+    _description = other._description;
 
-    pangoColor = other.pangoColor;
-    bLoaded = other.bLoaded;
+    _gradientType = other._gradientType;
+    _width = other._width;
+    _height = other._height;
+    _stops = other._stops;
+
+    if (other._pattern)
+      _pattern = cairo_pattern_reference(other._pattern);
+
+    if (_image)
+      _image = cairo_surface_reference(other._image);
+
+    _r = other._r;
+    _g = other._g;
+    _b = other._b;
+    _a = other._a;
+
+    _matrix = other._matrix;
+    _filter = other._filter;
+    _extend = other._extend;
+
+    _pangoColor = other._pangoColor;
+    _bLoaded = other._bLoaded;
   }
   Paint(Paint &&) {
     std::cout << "Move constructor" << std::endl << std::flush;
@@ -422,32 +442,47 @@ public:
   }
 
   ~Paint();
-  void emit(cairo_t *cr) const;
-  void emit(cairo_t *cr, double w, double h) const;
+  void emit(cairo_t *cr);
+  void emit(cairo_t *cr, double w, double h);
   void filter(filterType ft) {
-    if (pattern)
-      cairo_pattern_set_filter(pattern, static_cast<cairo_filter_t>(ft));
+    if (_pattern)
+      cairo_pattern_set_filter(_pattern, static_cast<cairo_filter_t>(ft));
   }
   void extend(extendType et) {
-    if (pattern)
-      cairo_pattern_set_extend(pattern, static_cast<cairo_extend_t>(et));
+    if (_pattern)
+      cairo_pattern_set_extend(_pattern, static_cast<cairo_extend_t>(et));
   }
 
 private:
-  bool linearGradient(const std::string &s);
-  bool radialGradient(const std::string &s);
+  bool create(void);
+  bool isLoaded(void) const { return _bLoaded; }
+  bool isLinearGradient(const std::string &s);
+  bool isRadialGradient(const std::string &s);
   bool patch(const std::string &s);
 
 private:
-  paintType type = paintType::none;
+  double _r = 0.0, _g = 0.0, _b = 0.0, _a = 1.0;
+  paintType _type = paintType::none;
+  std::string _description;
+
+  gradientType _gradientType = gradientType::none;
+
+  // linear gradient pattern space coordinates
+  double _x0 = 0, _y0 = 0, _x1 = 0, _y1 = 0;
+
+  // radial gradient pattern space coordinates
+  double _cx0 = 0, _cy0 = 0, _radius0 = 0, _cx1 = 0, _cy1 = 0, _radius1 = 0;
+  ColorStops _stops;
+
   filterType _filter = filterType::fast;
   extendType _extend = extendType::repeat;
+  double _width = -1;
+  double _height = -1;
 
-  cairo_pattern_t *pattern = nullptr;
-  cairo_surface_t *image = nullptr;
-  double r = 0.0, g = 0.0, b = 0.0, a = 1.0;
-  PangoColor pangoColor;
-  bool bLoaded = false;
+  cairo_pattern_t *_pattern = nullptr;
+  cairo_surface_t *_image = nullptr;
+  PangoColor _pangoColor;
+  bool _bLoaded = false;
 };
 
 /**
@@ -476,29 +511,50 @@ public:
   void pen(const Paint &p);
   void pen(u_int32_t c);
   void pen(const std::string &c);
+  void pen(const std::string &c, double w, double h);
   void pen(double _r, double _g, double _b);
   void pen(double _r, double _g, double _b, double _a);
+  void pen(double x0, double y0, double x1, double y1, const ColorStops &cs);
+  void pen(double cx0, double cy0, double radius0, double cx1, double cy1,
+           double radius1, const ColorStops &cs);
 
   void background(const Paint &p);
   void background(u_int32_t c);
   void background(const std::string &c);
+  void background(const std::string &c, double w, double h);
   void background(double _r, double _g, double _b);
   void background(double _r, double _g, double _b, double _a);
+  void background(double x0, double y0, double x1, double y1,
+                  const ColorStops &cs);
+  void background(double cx0, double cy0, double radius0, double cx1,
+                  double cy1, double radius1, const ColorStops &cs);
 
   void textOutline(const Paint &p, double dWidth = 1);
   void textOutline(u_int32_t c, double dWidth = 1);
   void textOutline(const std::string &c, double dWidth = 1);
+  void textOutline(const std::string &c, double w, double h, double dWidth = 1);
   void textOutline(double _r, double _g, double _b, double dWidth = 1);
   void textOutline(double _r, double _g, double _b, double _a,
                    double dWidth = 1);
+  void textOutline(double x0, double y0, double x1, double y1,
+                   const ColorStops &cs, double dWidth = 1);
+  void textOutline(double cx0, double cy0, double radius0, double cx1,
+                   double cy1, double radius1, const ColorStops &cs,
+                   double dWidth = 1);
+
   void textOutlineNone(void);
 
   void textFill(const Paint &p);
   void textFill(u_int32_t c);
   void textFill(const std::string &c);
+  void textFill(const std::string &c, double w, double h);
   void textFill(double _r, double _g, double _b);
   void textFill(double _r, double _g, double _b, double _a);
-  void textFill(const ColorStops &s);
+  void textFill(double x0, double y0, double x1, double y1,
+                const ColorStops &cs);
+  void textFill(double cx0, double cy0, double radius0, double cx1, double cy1,
+                double radius1, const ColorStops &cs);
+
   void textFillNone(void);
 
   void textShadow(const Paint &p, int r = 3, double xOffset = 1.0,
@@ -507,9 +563,19 @@ public:
                   double yOffset = 1.0);
   void textShadow(const std::string &c, int r = 3, double xOffset = 1.0,
                   double yOffset = 1.0);
+  void textShadow(const std::string &c, double w, double h, int r = 3,
+                  double xOffset = 1.0, double yOffset = 1.0);
+
   void textShadow(double _r, double _g, double _b, int r = 3,
                   double xOffset = 1.0, double yOffset = 1.0);
   void textShadow(double _r, double _g, double _b, double _a, int r = 3,
+                  double xOffset = 1.0, double yOffset = 1.0);
+
+  void textShadow(double x0, double y0, double x1, double y1,
+                  const ColorStops &cs, int r = 3, double xOffset = 1.0,
+                  double yOffset = 1.0);
+  void textShadow(double cx0, double cy0, double radius0, double cx1,
+                  double cy1, double radius1, const ColorStops &cs, int r = 3,
                   double xOffset = 1.0, double yOffset = 1.0);
 
   void textShadowNone(void);
@@ -551,7 +617,7 @@ public:
   void user(double &x, double &y);
   void userDistance(double &x, double &y);
 
-  void source(const Paint &p);
+  void source(Paint &p);
 
   void cap(lineCap c);
   void join(lineJoin j);
@@ -585,6 +651,11 @@ public:
   bool inClip(double x, double y);
 
   static void blurImage(cairo_surface_t *img, int radius);
+  static gboolean read_contents(const gchar *file_name, guint8 **contents,
+                                gsize *length);
+  static cairo_surface_t *
+  cairo_image_surface_create_from_svg(const char *filename, double width = -1,
+                                      double height = -1);
 
 private:
   void drawCaret(const int x, const int y, const int h);
@@ -668,7 +739,7 @@ private:
 
     AREA(void) {}
     AREA(double _cx, double _cy, double _r)
-        : x(_cx), y(_cy), rx(_r), type(areaType::circle) {}
+        : x(_cx), y(_cy), w(_r),h(_r), rx(_r), type(areaType::circle) {}
     AREA(areaType _type, double _x, double _y, double p3, double p4)
         : x(_x), y(_y), type(_type) {
       if (type == areaType::rectangle) {
@@ -728,7 +799,12 @@ private:
     PEN(double _r, double _g, double _b) : Paint(_r, _g, _b) {}
     PEN(double _r, double _g, double _b, double _a) : Paint(_r, _g, _b, _a) {}
     PEN(const std::string &n) : Paint(n) {}
-    PEN(const ColorStops &_stops) : Paint(_stops) {}
+    PEN(const std::string &n, double w, double h) : Paint(n, w, h) {}
+    PEN(double x0, double y0, double x1, double y1, const ColorStops &cs)
+        : Paint(x0, y0, x1, y1, cs) {}
+    PEN(double cx0, double cy0, double radius0, double cx1, double cy1,
+        double radius1, const ColorStops &cs)
+        : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~PEN() {}
     void invoke(const DisplayUnitContext &context);
   };
@@ -744,7 +820,12 @@ private:
     BACKGROUND(double _r, double _g, double _b, double _a)
         : Paint(_r, _g, _b, _a) {}
     BACKGROUND(const std::string &n) : Paint(n) {}
-    BACKGROUND(const ColorStops &_stops) : Paint(_stops) {}
+    BACKGROUND(const std::string &n, double w, double h) : Paint(n, w, h) {}
+    BACKGROUND(double x0, double y0, double x1, double y1, const ColorStops &cs)
+        : Paint(x0, y0, x1, y1, cs) {}
+    BACKGROUND(double cx0, double cy0, double radius0, double cx1, double cy1,
+               double radius1, const ColorStops &cs)
+        : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~BACKGROUND() {}
     void invoke(const DisplayUnitContext &context);
   };
@@ -786,8 +867,18 @@ private:
         : Paint(_r, _g, _b, _a), radius(r), x(xOffset), y(yOffset) {}
     TEXTSHADOW(const std::string &n, int r, double xOffset, double yOffset)
         : Paint(n), radius(r), x(xOffset), y(yOffset) {}
-    TEXTSHADOW(const ColorStops &_stops, int r, double xOffset, double yOffset)
-        : Paint(_stops), radius(r), x(xOffset), y(yOffset) {}
+    TEXTSHADOW(const std::string &n, double w, double h, int r, double xOffset,
+               double yOffset)
+        : Paint(n, w, h), radius(r), x(xOffset), y(yOffset) {}
+    TEXTSHADOW(double x0, double y0, double x1, double y1, const ColorStops &cs,
+               int r, double xOffset, double yOffset)
+        : Paint(x0, y0, x1, y1, cs), radius(r), x(xOffset), y(yOffset) {}
+    TEXTSHADOW(double cx0, double cy0, double radius0, double cx1, double cy1,
+               double radius1, const ColorStops &cs, int r, double xOffset,
+               double yOffset)
+        : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs), radius(r),
+          x(xOffset), y(yOffset) {}
+
     ~TEXTSHADOW() {}
     void invoke(const DisplayUnitContext &context) {}
 
@@ -809,8 +900,15 @@ private:
         : Paint(_r, _g, _b, _a), lineWidth(_lineWidth) {}
     TEXTOUTLINE(const std::string &n, double _lineWidth)
         : Paint(n), lineWidth(_lineWidth) {}
-    TEXTOUTLINE(const ColorStops &_stops, double _lineWidth)
-        : Paint(_stops), lineWidth(_lineWidth) {}
+    TEXTOUTLINE(const std::string &n, double w, double h, double _lineWidth)
+        : Paint(n, w, h), lineWidth(_lineWidth) {}
+    TEXTOUTLINE(double x0, double y0, double x1, double y1,
+                const ColorStops &cs, double _lineWidth)
+        : Paint(x0, y0, x1, y1, cs), lineWidth(_lineWidth) {}
+    TEXTOUTLINE(double cx0, double cy0, double radius0, double cx1, double cy1,
+                double radius1, const ColorStops &cs, double _lineWidth)
+        : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs),
+          lineWidth(_lineWidth) {}
 
     void invoke(const DisplayUnitContext &context) {}
 
@@ -827,7 +925,12 @@ private:
     TEXTFILL(double _r, double _g, double _b, double _a)
         : Paint(_r, _g, _b, _a) {}
     TEXTFILL(const std::string &n) : Paint(n) {}
-    TEXTFILL(const ColorStops &_stops) : Paint(_stops) {}
+    TEXTFILL(const std::string &n, double w, double h) : Paint(n, w, h) {}
+    TEXTFILL(double x0, double y0, double x1, double y1, const ColorStops &cs)
+        : Paint(x0, y0, x1, y1, cs) {}
+    TEXTFILL(double cx0, double cy0, double radius0, double cx1, double cy1,
+             double radius1, const ColorStops &cs)
+        : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
     ~TEXTFILL() {}
     void invoke(const DisplayUnitContext &context) {}
@@ -900,10 +1003,10 @@ private:
     VIRTUAL_INDEX(IMAGE);
     IMAGE(const std::string &_fileName) : fileName(_fileName) {}
     ~IMAGE() {
-      if (cairo)
-        cairo_surface_destroy(cairo);
+      if (image)
+        cairo_surface_destroy(image);
     }
-    cairo_surface_t *cairo = nullptr;
+    cairo_surface_t *image = nullptr;
     void invoke(const DisplayUnitContext &context);
     std::string fileName;
     bool bLoaded = false;

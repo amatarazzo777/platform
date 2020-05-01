@@ -7,10 +7,7 @@
 \version 1.0
 
 
-Box, circles and elipse from NANOSVG
-   NANOSVG  Copyright (c) 2013-14 Mikko Mononen memon@inside.org
 */
-
 
 /**
 \brief rendering and platform services.
@@ -267,7 +264,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
   context.windowHeight = height;
 
 #if defined(__linux__)
-  // this open provide interoperability between xcb and xwindows
+  // this open provides interoperability between xcb and xwindows
   // this is used here because of the necessity of key mapping.
   context.xdisplay = XOpenDisplay(nullptr);
   if (!context.xdisplay) {
@@ -323,8 +320,6 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
-  // resize to windowWidth,windowHeight
-  resize(context.windowWidth, context.windowHeight);
 
   /* Create a window */
   context.window = xcb_generate_id(context.connection);
@@ -361,8 +356,6 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
     throw std::runtime_error(sError.str());
   }
 
-  // resize to windowWidth,windowHeight
-  resize(context.windowWidth, context.windowHeight);
   /* you init the connection and screen_nbr */
   xcb_depth_iterator_t depth_iter;
 
@@ -398,14 +391,15 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
-  context.preclear = true;
-  render(event{eventType::paint, 0, 0});
-  cairo_surface_flush(context.xcbSurface);
 
   /* Map the window on the screen and flush*/
   xcb_map_window(context.connection, context.window);
   xcb_flush(context.connection);
   context.windowOpen = true;
+
+  context.preclear = true;
+  render(event{eventType::paint, 0, 0});
+  cairo_surface_flush(context.xcbSurface);
 
   return;
 
@@ -799,12 +793,25 @@ void uxdevice::platform::pen(u_int32_t c) { DL.push_back(make_unique<PEN>(c)); }
 void uxdevice::platform::pen(const string &c) {
   DL.push_back(make_unique<PEN>(c));
 }
+void uxdevice::platform::pen(const std::string &c, double w, double h) {
+  DL.push_back(make_unique<PEN>(c, w, h));
+}
+
 void uxdevice::platform::pen(double _r, double _g, double _b) {
   DL.push_back(make_unique<PEN>(_r, _g, _b));
 }
 void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
   DL.push_back(make_unique<PEN>(_r, _g, _b, _a));
 }
+void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
+                             const ColorStops &cs) {
+  DL.push_back(make_unique<PEN>(x0, y0, x1, y1, cs));
+}
+void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
+                             double cy1, double radius1, const ColorStops &cs) {
+  DL.push_back(make_unique<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+}
+
 /**
 \brief
 */
@@ -820,6 +827,10 @@ void uxdevice::platform::background(u_int32_t c) {
 void uxdevice::platform::background(const string &c) {
   DL.push_back(make_unique<BACKGROUND>(c));
 }
+void uxdevice::platform::background(const std::string &c, double w, double h) {
+  DL.push_back(make_unique<BACKGROUND>(c, w, h));
+}
+
 void uxdevice::platform::background(double _r, double _g, double _b) {
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b));
 }
@@ -827,7 +838,16 @@ void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b, _a));
 }
-
+void uxdevice::platform::background(double x0, double y0, double x1, double y1,
+                                    const ColorStops &cs) {
+  DL.push_back(make_unique<BACKGROUND>(x0, y0, x1, y1, cs));
+}
+void uxdevice::platform::background(double cx0, double cy0, double radius0,
+                                    double cx1, double cy1, double radius1,
+                                    const ColorStops &cs) {
+  DL.push_back(
+      make_unique<BACKGROUND>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+}
 /**
 \brief
 */
@@ -850,6 +870,10 @@ void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
 void uxdevice::platform::textOutline(const string &c, double dWidth) {
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
 }
+void uxdevice::platform::textOutline(const std::string &c, double w, double h,
+                                     double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(c, w, h, dWidth));
+}
 /**
 \brief
 */
@@ -864,6 +888,18 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
                                      double dWidth) {
   DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
 }
+void uxdevice::platform::textOutline(double x0, double y0, double x1, double y1,
+                                     const ColorStops &cs, double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
+}
+
+void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
+                                     double cx1, double cy1, double radius1,
+                                     const ColorStops &cs, double dWidth) {
+  DL.push_back(make_unique<TEXTOUTLINE>(cx0, cy0, radius0, cx1, cy1, radius1,
+                                        cs, dWidth));
+}
+
 /**
 \brief clears the current text outline from the context.
 */
@@ -880,16 +916,25 @@ void uxdevice::platform::textFill(u_int32_t c) {
 void uxdevice::platform::textFill(const string &c) {
   DL.push_back(make_unique<TEXTFILL>(c));
 }
+void uxdevice::platform::textFill(const string &c, double w, double h) {
+  DL.push_back(make_unique<TEXTFILL>(c, w, h));
+}
 void uxdevice::platform::textFill(double _r, double _g, double _b) {
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b));
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b, _a));
 }
-
-void uxdevice::platform::textFill(const ColorStops &s) {
-  DL.push_back(make_unique<TEXTFILL>(s));
+void uxdevice::platform::textFill(double x0, double y0, double x1, double y1,
+                                  const ColorStops &cs) {
+  DL.push_back(make_unique<TEXTFILL>(x0, y0, x1, y1, cs));
 }
+void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
+                                  double cx1, double cy1, double radius1,
+                                  const ColorStops &cs) {
+  DL.push_back(make_unique<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+}
+
 /**
 \brief clears the current text fill from the context.
 */
@@ -914,6 +959,11 @@ void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
                                     double yOffset) {
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
 }
+void uxdevice::platform::textShadow(const std::string &c, double w, double h,
+                                    int r, double xOffset, double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
+}
+
 /**
 \brief
 */
@@ -928,6 +978,22 @@ void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
                                     int r, double xOffset, double yOffset) {
   DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
 }
+
+void uxdevice::platform::textShadow(double x0, double y0, double x1, double y1,
+                                    const ColorStops &cs, int r, double xOffset,
+                                    double yOffset) {
+  DL.push_back(
+      make_unique<TEXTSHADOW>(x0, y0, x1, y1, cs, r, xOffset, yOffset));
+}
+
+void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
+                                    double cx1, double cy1, double radius1,
+                                    const ColorStops &cs, int r, double xOffset,
+                                    double yOffset) {
+  DL.push_back(make_unique<TEXTSHADOW>(cx0, cy0, radius0, cx1, cy1, radius1, cs,
+                                       r, xOffset, yOffset));
+}
+
 /**
 \brief clears the current text fill from the context.
 */
@@ -978,125 +1044,212 @@ void uxdevice::platform::drawArea(void) {
   DL.push_back(make_unique<DRAWAREA>());
 }
 
+/**
+\brief color given as a uint32 value
+*/
 uxdevice::Paint::Paint(u_int32_t c) {
-  u_int8_t _r = c >> 16;
-  u_int8_t _g = c >> 8;
-  u_int8_t _b = c;
-  u_int8_t _a = c >> 24;
 
-  r = _r / 255.0;
-  g = _g / 255.0;
-  b = _b / 255.0;
-  a = 1.0;
-  type = paintType::color;
+  _r = static_cast<u_int8_t>(c >> 16) / 255.0;
+  _g = static_cast<u_int8_t>(c >> 8) / 255.0;
+  _b = static_cast<u_int8_t>(c) / 255.0;
+  _a = 1.0;
+  _type = paintType::color;
+  _bLoaded = true;
 }
 
-uxdevice::Paint::Paint(double _r, double _g, double _b) {
-  r = _r;
-  g = _g;
-  b = _b;
-  a = 1.0;
-  type = paintType::color;
-}
+uxdevice::Paint::Paint(double r, double g, double b)
+    : _r(r), _g(g), _b(b), _a(1.0), _type(paintType::color), _bLoaded(true) {}
 
-uxdevice::Paint::Paint(double _r, double _g, double _b, double _a) {
-  r = _r;
-  g = _g;
-  b = _b;
-  a = _a;
-  type = paintType::color;
-}
-uxdevice::Paint::Paint(const std::string &n) {
+uxdevice::Paint::Paint(double r, double g, double b, double a)
+    : _r(r), _g(g), _b(b), _a(a), _type(paintType::color), _bLoaded(true) {}
 
-  // if it is a file name,
-  if (n.find(".png") != std::string::npos ||
-      n.find(".svg") != std::string::npos) {
-    image = cairo_image_surface_create_from_png(n.data());
-    pattern = cairo_pattern_create_for_surface(image);
-    cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
-    cairo_pattern_set_filter(pattern, CAIRO_FILTER_FAST);
-    bLoaded = true;
-    type = paintType::pattern;
+// color given as a description
+uxdevice::Paint::Paint(const std::string &n)
+    : _description(n), _bLoaded(false) {}
 
-  } else if (linearGradient(n)) {
+uxdevice::Paint::Paint(const std::string &n, double width, double height)
+    : _description(n), _width(width), _height(height), _bLoaded(false) {}
 
-  } else if (radialGradient(n)) {
+// specify a linear gradient
+uxdevice::Paint::Paint(double x0, double y0, double x1, double y1,
+                       const ColorStops &cs)
+    : _gradientType(gradientType::linear), _x0(x0), _y0(y0), _x1(x1), _y1(y1),
+      _stops(cs), _bLoaded(false) {}
 
-  } else if (patch(n)) {
-
-  } else if (pango_color_parse(&pangoColor, n.data())) {
-    r = pangoColor.red / 65535.0;
-    g = pangoColor.green / 65535.0;
-    b = pangoColor.blue / 65535.0;
-    // a = pangoColor.alpha / 65535.0;
-    type = paintType::color;
-  }
-}
-
-uxdevice::Paint::Paint(const ColorStops &stops) {
-  pattern = cairo_pattern_create_linear(0, 0, 0, 300);
-  cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
-  for (auto &n : stops) {
-    cairo_pattern_add_color_stop_rgba(pattern, n.offset, n.r, n.g, n.g, n.a);
-  }
-
-  type = paintType::pattern;
-}
+// specify a radial gradient
+uxdevice::Paint::Paint(double cx0, double cy0, double radius0, double cx1,
+                       double cy1, double radius1, const ColorStops &cs)
+    : _gradientType(gradientType::radial), _cx0(cx0), _cy0(cy0),
+      _radius0(radius0), _cx1(cx1), _cy1(cy1), _radius1(radius1), _stops(cs),
+      _bLoaded(false) {}
 
 uxdevice::Paint::~Paint() {
-  if (pattern)
-    cairo_pattern_destroy(pattern);
-  if (image)
-    cairo_surface_destroy(image);
+  if (_pattern)
+    cairo_pattern_destroy(_pattern);
+  if (_image)
+    cairo_surface_destroy(_image);
 }
 
-// parse web formats
-// linear-gradient(to bottom, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
-// 51%,#7db9e8 100%); linear-gradient(to right, #1e5799 0%,#2989d8 50%,#207cca
-// 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(135deg, #1e5799 0%,#2989d8
-// 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(45deg, #1e5799
-// 0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); radial-gradient(ellipse
-// at center, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%);
+/**
+\brief The routine handles the creation of the pattern or surface.
+Patterns can be a image file, a description of a linear, actual parameters of
+linear, a description of a radial, the actual radial parameters stored
 
-bool uxdevice::Paint::linearGradient(const std::string &s) {
-  return s.find("linear-gradient") != std::string::npos;
+*/
+bool uxdevice::Paint::create(void) {
+  // already created,
+  if (_bLoaded)
+    return true;
+
+  // if a description was provided, determine how it should be interpreted
+  if (_description.size() != 0) {
+    // a .png file is named
+    if (_description.find(".png") != std::string::npos) {
+      _image = cairo_image_surface_create_from_png(_description.data());
+
+      if(cairo_surface_status(_image)!=CAIRO_STATUS_SUCCESS) {
+        _image=nullptr;
+      }
+
+      if (_image) {
+        _width = cairo_image_surface_get_width(_image);
+        _height = cairo_image_surface_get_height(_image);
+        _pattern = cairo_pattern_create_for_surface(_image);
+        cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(_pattern, CAIRO_FILTER_FAST);
+        _type = paintType::pattern;
+        _bLoaded = true;
+      }
+
+      // a .svg file is named
+    } else if (_description.find(".svg") != std::string::npos) {
+      _image = platform::cairo_image_surface_create_from_svg(
+          _description.data(), _width, _height);
+      if (_image) {
+        _pattern = cairo_pattern_create_for_surface(_image);
+        cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
+        cairo_pattern_set_filter(_pattern, CAIRO_FILTER_FAST);
+        _type = paintType::pattern;
+        _bLoaded = true;
+      }
+
+    } else if (isLinearGradient(_description)) {
+      _gradientType = gradientType::linear;
+
+    } else if (isRadialGradient(_description)) {
+      _gradientType = gradientType::radial;
+
+    } else if (patch(_description)) {
+
+    } else if (pango_color_parse(&_pangoColor, _description.data())) {
+      _r = _pangoColor.red / 65535.0;
+      _g = _pangoColor.green / 65535.0;
+      _b = _pangoColor.blue / 65535.0;
+      // a = pangoColor.alpha / 65535.0;
+      _type = paintType::color;
+      _bLoaded = true;
+    }
+  }
+
+  // still more processing to do
+  if (!_bLoaded) {
+
+    if (_gradientType == gradientType::linear) {
+      _pattern = cairo_pattern_create_linear(_x0, _y0, _x1, _y1);
+    } else if (_gradientType == gradientType::radial) {
+      _pattern = cairo_pattern_create_radial(_cx0, _cy0, _radius0, _cx1, _cy1,
+                                             _radius1);
+    }
+    if (_pattern && _stops.size() > 0) {
+      cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
+      for (auto &n : _stops) {
+        cairo_pattern_add_color_stop_rgba(_pattern, n.offset, n.r, n.g, n.g,
+                                          n.a);
+      }
+      _type = paintType::pattern;
+      _bLoaded = true;
+    }
+  }
+
+  return _bLoaded;
 }
 
-bool uxdevice::Paint::radialGradient(const std::string &s) {
-  return s.find("radial-gradient") != std::string::npos;
+/**
+ parse web formats
+
+linear-gradient(to bottom, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
+51%,#7db9e8 100%); linear-gradient(to right, #1e5799 0%,#2989d8 50%,#207cca
+51%,#2989d8 51%,#7db9e8 100%); linear-gradient(135deg, #1e5799 0%,#2989d8
+50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(45deg, #1e5799
+0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%);
+
+radial-gradient(ellipse at center, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
+51%,#7db9e8 100%);
+
+*/
+
+bool uxdevice::Paint::isLinearGradient(const std::string &s) {
+
+  if (s.find("linear-gradient") == std::string::npos)
+    return false;
+
+  return true;
+}
+
+bool uxdevice::Paint::isRadialGradient(const std::string &s) {
+
+  if (s.find("radial-gradient") == std::string::npos)
+    return false;
+
+
+  return true;
+
 }
 
 bool uxdevice::Paint::patch(const std::string &s) { return false; }
 
-void uxdevice::Paint::emit(cairo_t *cr) const {
-  switch (type) {
-  case paintType::color:
-    cairo_set_source_rgba(cr, r, g, b, a);
-    break;
-  case paintType::pattern:
-    cairo_pattern_set_matrix(pattern, &_matrix);
-    cairo_set_source(cr, pattern);
-    break;
-  case paintType::image:
-    cairo_pattern_set_matrix(pattern, &_matrix);
-    cairo_set_source_surface(cr, image, 0, 0);
-    break;
+void uxdevice::Paint::emit(cairo_t *cr) {
+  if (!isLoaded())
+    create();
+
+  if (isLoaded()) {
+    switch (_type) {
+    case paintType::none:
+      break;
+    case paintType::color:
+      cairo_set_source_rgba(cr, _r, _g, _b, _a);
+      break;
+    case paintType::pattern:
+      cairo_pattern_set_matrix(_pattern, &_matrix);
+      cairo_set_source(cr, _pattern);
+      break;
+    case paintType::image:
+      cairo_pattern_set_matrix(_pattern, &_matrix);
+      cairo_set_source_surface(cr, _image, 0, 0);
+      break;
+    }
   }
 }
 
-void uxdevice::Paint::emit(cairo_t *cr, double w, double h) const {
-  switch (type) {
-  case paintType::color:
-    cairo_set_source_rgba(cr, r, g, b, a);
-    break;
-  case paintType::pattern:
-    cairo_pattern_set_matrix(pattern, &_matrix);
-    cairo_set_source(cr, pattern);
-    break;
-  case paintType::image:
-    cairo_pattern_set_matrix(pattern, &_matrix);
-    cairo_set_source_surface(cr, image, 0, 0);
-    break;
+void uxdevice::Paint::emit(cairo_t *cr, double w, double h) {
+  if (!isLoaded())
+    create();
+  if (isLoaded()) {
+    switch (_type) {
+    case paintType::none:
+      break;
+    case paintType::color:
+      cairo_set_source_rgba(cr, _r, _g, _b, _a);
+      break;
+    case paintType::pattern:
+      cairo_pattern_set_matrix(_pattern, &_matrix);
+      cairo_set_source(cr, _pattern);
+      break;
+    case paintType::image:
+      cairo_pattern_set_matrix(_pattern, &_matrix);
+      cairo_set_source_surface(cr, _image, 0, 0);
+      break;
+    }
   }
 }
 
@@ -1324,9 +1477,9 @@ void uxdevice::platform::op(op_t _op) {
 /**
 \brief
 */
-void uxdevice::platform::source(const Paint &p) {
+void uxdevice::platform::source(Paint &p) {
   using namespace std::placeholders;
-  auto fn = [](cairo_t *cr, const Paint &p) { p.emit(cr); };
+  auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
 
   CAIRO_FUNCTION func = std::bind(fn, _1, p);
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1395,7 +1548,12 @@ void uxdevice::platform::stroke(bool bPreserve) {
 */
 void uxdevice::platform::move(double x, double y, bool bRelative) {
   using namespace std::placeholders;
-  CAIRO_FUNCTION func = std::bind(cairo_move_to, _1, x, y);
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_move_to, _1, x, y);
+  } else {
+    func = std::bind(cairo_move_to, _1, x, y);
+  }
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
@@ -1487,8 +1645,8 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
     // depending on the parameters set for the textual character rendering,
     // different pango apis may be used in conjunction with cairo.
     // essentially this optimizes the textual rendering
-    // wuch that less calls are made and more automatic filling
-    // occurss within the rendering.
+    // such that less calls are made and more automatic filling
+    // occurs within the rendering.
     bool bUsePathLayout = false;
     bool bOutline = false;
     bool bFilled = false;
@@ -1593,6 +1751,7 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
                            context.AREA()->y);
   cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
                   context.AREA()->w, context.AREA()->h);
+   cairo_surface_write_to_png (textImage, "textImage.png");
   cairo_fill(context.cr);
 }
 
@@ -1912,9 +2071,9 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-  cairo_set_source_surface(context.cr, context.IMAGE()->cairo,
+  cairo_set_source_surface(context.cr, context.IMAGE()->image,
                            context.AREA()->x, context.AREA()->y);
-  cairo_mask_surface(context.cr, context.IMAGE()->cairo, context.AREA()->x,
+  cairo_mask_surface(context.cr, context.IMAGE()->image, context.AREA()->x,
                      context.AREA()->y);
 }
 
@@ -1934,63 +2093,63 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
   const AREA &area = *context.AREA();
 
   switch (context.AREA()->type) {
+  case areaType::none:
+    break;
   case areaType::rectangle:
     cairo_rectangle(context.cr, area.x, area.y, area.w, area.h);
     break;
   case areaType::roundedRectangle:
+    // derived  from svgren by Ivan Gagis <igagis@gmail.com>
     cairo_move_to(context.cr, area.x + area.rx, area.y);
     cairo_line_to(context.cr, area.x + area.w - area.rx, area.y);
-    cairo_curve_to(context.cr, area.x + area.w - area.rx * (1 - KAPPA90),
-                   area.y, area.x + area.w, area.y + area.ry * (1 - KAPPA90),
-                   area.x + area.w, area.y + area.ry);
+
+    cairo_save(context.cr);
+    cairo_translate(context.cr, area.x + area.w - area.rx, area.y + area.ry);
+    cairo_scale(context.cr, area.rx, area.ry);
+    cairo_arc(context.cr, 0, 0, 1, -PI / 2, 0);
+    cairo_restore(context.cr);
+
     cairo_line_to(context.cr, area.x + area.w, area.y + area.h - area.ry);
-    cairo_curve_to(context.cr, area.x + area.w,
-                   area.y + area.h - area.ry * (1 - KAPPA90),
-                   area.x + area.w - area.rx * (1 - KAPPA90), area.y + area.h,
-                   area.x + area.w - area.rx, area.y + area.h);
+
+    cairo_save(context.cr);
+    cairo_translate(context.cr, area.x + area.w - area.rx,
+                    area.y + area.h - area.ry);
+    cairo_scale(context.cr, area.rx, area.ry);
+    cairo_arc(context.cr, 0, 0, 1, 0, PI / 2);
+    cairo_restore(context.cr);
+
     cairo_line_to(context.cr, area.x + area.rx, area.y + area.h);
-    cairo_curve_to(context.cr, area.x + area.rx * (1 - KAPPA90),
-                   area.y + area.h, area.x,
-                   area.y + area.h - area.ry * (1 - KAPPA90), area.x,
-                   area.y + area.h - area.ry);
+
+    cairo_save(context.cr);
+    cairo_translate(context.cr, area.x + area.rx, area.y + area.h - area.ry);
+    cairo_scale(context.cr, area.rx, area.ry);
+    cairo_arc(context.cr, 0, 0, 1, PI / 2, PI);
+    cairo_restore(context.cr);
+
     cairo_line_to(context.cr, area.x, area.y + area.ry);
-    cairo_curve_to(context.cr, area.x, area.y + area.ry * (1 - KAPPA90),
-                   area.x + area.rx * (1 - KAPPA90), area.y, area.x + area.rx,
-                   area.y);
-    cairo_close_path (context.cr);
+
+    cairo_save(context.cr);
+    cairo_translate(context.cr, area.x + area.rx, area.y + area.ry);
+    cairo_scale(context.cr, area.rx, area.ry);
+    cairo_arc(context.cr, 0, 0, 1, PI, PI * 3 / 2);
+    cairo_restore(context.cr);
+
+    cairo_close_path(context.cr);
     break;
   case areaType::circle:
-    cairo_move_to(context.cr, area.x + area.rx, area.y);
-    cairo_curve_to(context.cr, area.x + area.rx, area.y + area.rx * KAPPA90,
-                   area.x + area.rx * KAPPA90, area.y + area.rx, area.x,
-                   area.y + area.rx);
-    cairo_curve_to(context.cr, area.x - area.rx * KAPPA90, area.y + area.rx,
-                   area.x - area.rx, area.y + area.rx * KAPPA90,
-                   area.x - area.rx, area.y);
-    cairo_curve_to(context.cr, area.x - area.rx, area.y - area.rx * KAPPA90,
-                   area.x - area.rx * KAPPA90, area.y - area.rx, area.x,
-                   area.y - area.rx);
-    cairo_curve_to(context.cr, area.x + area.rx * KAPPA90, area.y - area.rx,
-                   area.x + area.rx, area.y - area.rx * KAPPA90,
-                   area.x + area.rx, area.y);
-    cairo_close_path (context.cr);
+    cairo_new_sub_path(context.cr);
+    cairo_arc(context.cr, area.x, area.y, area.rx, 0., 2 * PI);
+    cairo_close_path(context.cr);
     break;
 
   case areaType::ellipse:
-    cairo_move_to(context.cr, area.x + area.rx, area.y);
-    cairo_curve_to(context.cr, area.x + area.rx, area.y + area.ry * KAPPA90,
-                   area.x + area.rx * KAPPA90, area.y + area.ry, area.x,
-                   area.y + area.ry);
-    cairo_curve_to(context.cr, area.x - area.rx * KAPPA90, area.y + area.ry,
-                   area.x - area.rx, area.y + area.ry * KAPPA90,
-                   area.x - area.rx, area.y);
-    cairo_curve_to(context.cr, area.x - area.rx, area.y - area.ry * KAPPA90,
-                   area.x - area.rx * KAPPA90, area.y - area.ry, area.x,
-                   area.y - area.ry);
-    cairo_curve_to(context.cr, area.x + area.rx * KAPPA90, area.y - area.ry,
-                   area.x + area.rx, area.y - area.ry * KAPPA90,
-                   area.x + area.rx, area.y);
-    cairo_close_path (context.cr);
+    cairo_save(context.cr);
+    cairo_translate(context.cr, area.x + area.rx / 2., area.y + area.ry / 2.);
+    cairo_scale(context.cr, area.rx / 2., area.ry / 2.);
+    cairo_new_sub_path(context.cr);
+    cairo_arc(context.cr, 0., 0., 1., 0., 2 * PI);
+    cairo_close_path(context.cr);
+    cairo_restore(context.cr);
     break;
   }
 
@@ -2010,7 +2169,7 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
-  emit(context.cr);
+  //emit(context.cr);
 }
 
 /**
@@ -2018,7 +2177,7 @@ void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::BACKGROUND::invoke(const DisplayUnitContext &context) {
-  emit(context.cr);
+  //emit(context.cr);
 }
 
 void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
@@ -2027,20 +2186,98 @@ void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief uses gio file streaming.
 */
+gboolean uxdevice::platform::read_contents(const gchar *file_name,
+                                           guint8 **contents, gsize *length) {
+  GFile *file;
+  GFileInputStream *input_stream;
+  gboolean success = FALSE;
+
+  file = g_file_new_for_commandline_arg(file_name);
+  input_stream = g_file_read(file, NULL, NULL);
+  if (input_stream) {
+    GFileInfo *file_info;
+
+    file_info = g_file_input_stream_query_info(
+        input_stream, G_FILE_ATTRIBUTE_STANDARD_SIZE, NULL, NULL);
+    if (file_info) {
+      gsize bytes_read;
+
+      *length = g_file_info_get_size(file_info);
+      *contents = g_new(guint8, *length);
+      success = g_input_stream_read_all(G_INPUT_STREAM(input_stream), *contents,
+                                        *length, &bytes_read, NULL, NULL);
+      g_object_unref(file_info);
+    }
+    g_object_unref(input_stream);
+  }
+
+  g_object_unref(file);
+
+  return success;
+}
+
+cairo_surface_t *uxdevice::platform::cairo_image_surface_create_from_svg(
+    const char *filename, double width, double height) {
+  guint8 *contents = NULL;
+  gsize length;
+  RsvgHandle *handle;
+  RsvgDimensionData dimensions;
+  cairo_surface_t *img = nullptr;
+
+  if (!read_contents(filename, &contents, &length))
+    return nullptr;
+
+  handle = rsvg_handle_new_from_data(contents, length, NULL);
+  if (!handle) {
+    g_free(contents);
+    return nullptr;
+  }
+
+  double dWidth = width, dHeight = height;
+  rsvg_handle_get_dimensions(handle, &dimensions);
+
+  if (dWidth < 1) {
+    dWidth = dimensions.width;
+  } else {
+    dWidth /= dimensions.width;
+  }
+
+  if (dHeight < 1) {
+    dHeight = dimensions.height;
+  } else {
+    dHeight /= dimensions.height;
+  }
+  // render the image to surface
+  img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+  cairo_t *cr = cairo_create(img);
+  cairo_scale(cr, dWidth, dHeight);
+  rsvg_handle_render_cairo(handle, cr);
+
+  // clean up
+  cairo_destroy(cr);
+  g_free(contents);
+  g_object_unref(handle);
+
+  return img;
+}
+
 void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
   if (bLoaded)
     return;
 
   if (context.IMAGE()->fileName.find(".png") != std::string::npos) {
-    cairo =
+    image =
         cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
-  } else  if (context.IMAGE()->fileName.find(".svg") != std::string::npos) {
 
+  } else if (context.IMAGE()->fileName.find(".svg") != std::string::npos) {
+    image = cairo_image_surface_create_from_svg(
+        context.IMAGE()->fileName.data(), context.AREA()->w, context.AREA()->h);
   }
 
-  bLoaded = true;
+  if (image)
+    bLoaded = true;
 }
 
 /**
@@ -2056,7 +2293,6 @@ void uxdevice::platform::drawCaret(const int x, const int y, const int h) {}
 
 */
 void uxdevice::platform::resize(const int w, const int h) {
-
   context.windowWidth = w;
   context.windowHeight = h;
 

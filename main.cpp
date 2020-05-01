@@ -55,36 +55,35 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.font("DejaVu Sans Bold 14");
   vis.area(0, 0, 800, 600, 120, 120);
 
-  vis.pen(Paint("white"));
+  Paint tiger = Paint("/home/anthony/development/platform/23.svg", 50, 50);
+  tiger.rotate(PI / 180 * 10);
 
-  Paint bugs = Paint("/home/anthony/development/platform/bugu.png");
-  bugs.rotate(3.14 / 180 * 10);
-  bugs.scale(1.15, 1.15);
-  bugs.translate(-1, -1);
-
-  bugs.extend(extendType::reflect);
-  bugs.filter(filterType::bilinear);
-
-  vis.background(bugs);
-  vis.drawArea();
-  vis.pen(.3,.4,.3);
-  vis.lineWidth(40);
-  vis.background(Paint(.2, .2, .2, .7));
+  tiger.extend(extendType::reflect);
+  tiger.filter(filterType::bilinear);
+  vis.pen("lime");
+  vis.lineWidth(5);
+  vis.background(tiger);
   vis.drawArea();
 
-  vis.pen(Paint("white"));
+  vis.pen("white");
+  vis.lineWidth(1);
+  vis.background(Paint(.3, .3, .3, .7));
+  vis.drawArea();
+
+  vis.pen(Paint("aqua"));
+  vis.textShadow("grey");
   vis.drawText();
 
-  vis.area(100, 100, 20);
+  vis.area(100, 100, 100);
   Paint bugs2 = Paint("/home/anthony/development/platform/bug.png");
   vis.lineWidth(4);
   bugs2.extend(extendType::reflect);
   bugs2.filter(filterType::bilinear);
   vis.background(bugs2);
+  vis.pen("orange");
   vis.drawArea();
 
-
-  vis.areaEllipse(400, 300, 200, 100);
+  vis.areaEllipse(00, 300, 500, 100);
   Paint bugs3 = Paint("/home/anthony/development/platform/text.png");
 
   bugs3.extend(extendType::reflect);
@@ -92,23 +91,51 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.background(bugs3);
   vis.drawArea();
 
-  //button
-  vis.translate(200,200);
-  vis.area(25.702381,108.0119,167.06548,61.988094,17.41297, 14.174099);
-  vis.background(0,0,.7,.58);
+  // button
+  vis.save();
+  vis.translate(200, 200);
+  vis.area(25.702381, 108.0119, 167.06548, 61.988094, 17.41297, 14.174099);
+  vis.background(0, 0, .7, .58);
   vis.lineWidth(.86);
-  vis.pen(0,.6,8,1);
+  vis.pen(0, .6, 8, 1);
   vis.drawArea();
 
-  vis.translate(0,16);
-  vis.pen(1,1,1);
+  vis.translate(0, 16);
+  vis.pen(1, 1, 1);
   vis.textAlignment(alignment::center);
   vis.text("OK");
-  vis.textShadow(0,0,0);
+  vis.textShadow(0, 0, 0);
   vis.drawText();
-  vis.translate(0,-16);
-  vis.area(25.702381,108.0119,167.06548,61.988094,17.41297, 14.174099);
-  vis.background(Paint({{0,0,0,.5,1},{1,0,0,.5,0}}));
+  vis.translate(0, -16);
+  vis.area(25.702381, 108.0119, 167.06548, 61.988094, 17.41297, 14.174099);
+  vis.background(Paint(0, 0, 0, 25, {{0, 0, 0, .5, 1}, {10, 0, 0, .5, 0}}));
+  vis.drawArea();
+  vis.restore();
+
+  vis.area(15, 300, 150, 220);
+  vis.image("/home/anthony/development/platform/button.svg");
+  vis.drawImage();
+
+  vis.area(400, 300, 200, 200);
+  vis.image("/home/anthony/development/platform/drawing.svg");
+  vis.drawImage();
+
+  vis.area(600, 300, 200, 200);
+  vis.image("/home/anthony/development/platform/23.svg");
+  vis.drawImage();
+
+
+  vis.area(450,50,100);
+  vis.background(0,0,0,100,{{0,1,0,0,1},{1,.3,0,0,.7}});
+  vis.pen(0,0,0,100,{{0,0,0,1,1},{1,0,0,.30,.7}});
+  vis.lineWidth(5);
+  vis.drawArea();
+
+  vis.area(550,50,100);
+
+  vis.background(50,50,10, 25,25,10,{{0,1,0,0,1},{1,.3,0,0,1}});
+  vis.pen(0,0,0,100,{{0,0,0,1,1},{1,0,0,1,1}});
+  vis.lineWidth(5);
   vis.drawArea();
 
 
