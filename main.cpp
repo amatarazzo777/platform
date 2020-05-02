@@ -38,28 +38,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.clear();
   vis.antiAlias(antialias::subPixel);
 
-  vis.textFillNone();
-  vis.textOutlineNone();
-  vis.textShadowNone();
-
   vis.textAlignment(alignment::left);
   vis.text(
       "The sun sets casting its refraction upon the mountain side. "
-      "The glistening oil coats upon the ravens are a remark of healthiness."
-      "One that is pronounced during the day and in the moonlight."
+      "The glistening oil coats upon the ravens are a remark of healthiness. "
+      "One that is pronounced during the day and in the moonlight. "
       "At home, a cave dweller sees this all at once. These are indeed fine "
-      "things."
+      "things. "
       "The warmth of the sun decays as thousands of brilliant stars dictate "
-      "the continual persistence of the system. A remarkable sight. A heavenly "
+      "the continual persistence of the system.  A remarkable sight. A heavenly "
       "home.");
   vis.font("DejaVu Sans Bold 14");
   vis.area(0, 0, 800, 600, 120, 120);
 
   Paint tiger = Paint("/home/anthony/development/platform/23.svg", 50, 50);
   tiger.rotate(PI / 180 * 10);
-
   tiger.extend(extendType::reflect);
   tiger.filter(filterType::bilinear);
+
   vis.pen("lime");
   vis.lineWidth(5);
   vis.background(tiger);
@@ -74,14 +70,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.textShadow("grey");
   vis.drawText();
 
-  vis.area(100, 100, 100);
-  Paint bugs2 = Paint("/home/anthony/development/platform/bug.png");
-  vis.lineWidth(4);
-  bugs2.extend(extendType::reflect);
-  bugs2.filter(filterType::bilinear);
-  vis.background(bugs2);
-  vis.pen("orange");
-  vis.drawArea();
 
   vis.areaEllipse(00, 300, 500, 100);
   Paint bugs3 = Paint("/home/anthony/development/platform/text.png");
@@ -112,7 +100,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.drawArea();
   vis.restore();
 
-  vis.area(15, 300, 150, 220);
+  // draw svg
+  vis.area(15, 300, 200, 220);
   vis.image("/home/anthony/development/platform/button.svg");
   vis.drawImage();
 
@@ -125,19 +114,64 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.drawImage();
 
 
-  vis.area(450,50,100);
-  vis.background(0,0,0,100,{{0,1,0,0,1},{1,.3,0,0,.7}});
-  vis.pen(0,0,0,100,{{0,0,0,1,1},{1,0,0,.30,.7}});
+  // draw objects in a row
+  // color stops can name the colors in various forms,
+  // these are passed as a vector of color stops.
+  // when the offset is not given, it is automatically
+  // added. This shortens the gradient creation.
+  // The gradients below are linear. The first part is the
+  // line.
+  vis.area(0, 200, 100);
+
+  vis.background(0, 0, 0, 100, {{"red"}, {"orange"}, {"blue"}, {"green"}});
+  vis.pen("black");
+  vis.pen(0, 0, 0, 100, {{"violet"}, {"purple"}});
+  vis.lineWidth(10);
+  vis.drawArea();
+
+  vis.area(100, 200, 100, 100, 29, 20);
+  vis.background(
+      0, 0, 0, 100,
+      {{0, "lime"}, {.7, "darkgreen"}, {.7, "darkgreen"}, {1, "#030"}});
+  vis.pen("black");
+  vis.pen(0, 0, 0, 100, {{0, 0, 0, 1, 1}, {1, 0, 0, .30, 1}});
+  vis.lineWidth(7.5);
+  vis.drawArea();
+
+  vis.area(200, 200, 100);
+  vis.background(0, 0, 0, 100, {{0, "yellow"}, {1, "brown"}});
+  vis.pen(0, 0, 0, 100, {{0, "orange"}, {1, "darkorange"}});
   vis.lineWidth(5);
   vis.drawArea();
 
-  vis.area(550,50,100);
-
-  vis.background(50,50,10, 25,25,10,{{0,1,0,0,1},{1,.3,0,0,1}});
-  vis.pen(0,0,0,100,{{0,0,0,1,1},{1,0,0,1,1}});
-  vis.lineWidth(5);
+  vis.area(300, 200, 100);
+  Paint bugs2 = Paint("/home/anthony/development/platform/bug.png");
+  vis.lineWidth(4);
+  bugs2.extend(extendType::reflect);
+  bugs2.filter(filterType::bilinear);
+  vis.background(bugs2);
+  vis.pen("orange");
   vis.drawArea();
 
+  // draw text
+  vis.font("DejaVu Sans Bold 44");
+  vis.textShadow("black",5,2,2);
+
+  // gradient TEXT
+  vis.area(0,400,300,300);
+  vis.text("Text Gradient");
+  vis.textFill(0,300,300,300,{{"green"},{"yellow"},{"orange"}});
+  // the gradient repeats, so a smaller line will create a
+  // stripe.
+  vis.textOutline(0,0,10,10,{{"pink"},{"red"}}, 3);
+  vis.drawText();
+
+  vis.area(300,400,300,300);
+  vis.text("Text Textured");
+  // svg should have width and height
+  vis.textFill("/home/anthony/development/platform/23.svg",30,30);
+  vis.textOutline("/home/anthony/development/platform/bug.png",3);
+  vis.drawText();
 
 
   vis.processEvents();

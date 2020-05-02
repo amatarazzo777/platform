@@ -1017,8 +1017,8 @@ void uxdevice::platform::area(double x, double y, double w, double h, double rx,
                               double ry) {
   DL.push_back(make_unique<AREA>(x, y, w, h, rx, ry));
 }
-void uxdevice::platform::areaCircle(double cx, double cy, double r) {
-  DL.push_back(make_unique<AREA>(cx, cy, r));
+void uxdevice::platform::areaCircle(double x, double y, double d) {
+  DL.push_back(make_unique<AREA>(x, y, d / 2));
 }
 void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
                                      double ry) {
@@ -1042,6 +1042,63 @@ void uxdevice::platform::drawImage(void) {
 */
 void uxdevice::platform::drawArea(void) {
   DL.push_back(make_unique<DRAWAREA>());
+}
+
+/**
+\brief color stops interface
+*/
+uxdevice::ColorStop::ColorStop(u_int32_t c) : ColorStop(-1, c) {
+  _bAutoOffset = true;
+}
+
+uxdevice::ColorStop::ColorStop(double o, u_int32_t c) {
+  _bRGBA = false;
+  _bAutoOffset = false;
+  _offset = o;
+  _r = static_cast<u_int8_t>(c >> 16) / 255.0;
+  _g = static_cast<u_int8_t>(c >> 8) / 255.0;
+  _b = static_cast<u_int8_t>(c) / 255.0;
+  _a = 1.0;
+}
+
+uxdevice::ColorStop::ColorStop(double r, double g, double b)
+    : _bAutoOffset(true), _bRGBA(false), _offset(-1), _r(r), _g(g), _b(b),
+      _a(1) {}
+
+uxdevice::ColorStop::ColorStop(double o, double r, double g, double b)
+    : _bAutoOffset(false), _bRGBA(false), _offset(o), _r(r), _g(g), _b(b),
+      _a(1) {}
+
+uxdevice::ColorStop::ColorStop(double o, double r, double g, double b, double a)
+    : _bAutoOffset(false), _bRGBA(true), _offset(o), _r(r), _g(g), _b(b),
+      _a(a) {}
+
+uxdevice::ColorStop::ColorStop(const std::string &s) : ColorStop(-1, s) {
+  _bAutoOffset = true;
+}
+
+uxdevice::ColorStop::ColorStop(double o, const std::string &s) {
+  _bAutoOffset = false;
+  _bRGBA = false;
+  _offset = o;
+  parseColor(s);
+}
+
+uxdevice::ColorStop::ColorStop(double o, const std::string &s, double a) {
+  _bAutoOffset = false;
+  _bRGBA = true;
+  _offset = o;
+  _a = a;
+  parseColor(s);
+}
+
+void uxdevice::ColorStop::parseColor(const std::string &s) {
+  PangoColor pangoColor;
+  if (pango_color_parse(&pangoColor, s.data())) {
+    _r = pangoColor.red / 65535.0;
+    _g = pangoColor.green / 65535.0;
+    _b = pangoColor.blue / 65535.0;
+  }
 }
 
 /**
@@ -1107,8 +1164,8 @@ bool uxdevice::Paint::create(void) {
     if (_description.find(".png") != std::string::npos) {
       _image = cairo_image_surface_create_from_png(_description.data());
 
-      if(cairo_surface_status(_image)!=CAIRO_STATUS_SUCCESS) {
-        _image=nullptr;
+      if (cairo_surface_status(_image) != CAIRO_STATUS_SUCCESS) {
+        _image = nullptr;
       }
 
       if (_image) {
@@ -1151,21 +1208,78 @@ bool uxdevice::Paint::create(void) {
     }
   }
 
-  // still more processing to do
-  if (!_bLoaded) {
+  // still more processing to do, -- create gradients
+  if (!_bLoaded && _stops.size() > 0) {
 
     if (_gradientType == gradientType::linear) {
       _pattern = cairo_pattern_create_linear(_x0, _y0, _x1, _y1);
+
     } else if (_gradientType == gradientType::radial) {
       _pattern = cairo_pattern_create_radial(_cx0, _cy0, _radius0, _cx1, _cy1,
                                              _radius1);
     }
-    if (_pattern && _stops.size() > 0) {
-      cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
-      for (auto &n : _stops) {
-        cairo_pattern_add_color_stop_rgba(_pattern, n.offset, n.r, n.g, n.g,
-                                          n.a);
+    if (_pattern) {
+
+      // provide auto offsets
+
+      bool bDone = false;
+
+      // first one, if auto offset set to
+      //   0 - the beginning of the color stops
+      ColorStopsIterator it = _stops.begin();
+      if (it->_bAutoOffset) {
+        it->_bAutoOffset = false;
+        it->_offset = 0;
       }
+      double dOffset = it->_offset;
+
+      while (!bDone) {
+
+        // find first color stop with a defined offset.
+        ColorStopsIterator it2 =
+            find_if(it + 1, _stops.end(),
+                    [](auto const &o) { return !o._bAutoOffset; });
+
+        // not found, the last item in color stops did not have a value,
+        // assign it 1.0
+        if (it2 == _stops.end()) {
+          it2--;
+          // edge case
+          if (it2->_bAutoOffset) {
+            it2->_bAutoOffset = false;
+            it2->_offset = 1;
+          }
+          bDone = true;
+        }
+
+        // distribute offsets equally across range
+        int nColorStops = std::distance(it, it2);
+        if (nColorStops > 0) {
+          double incr = (it2->_offset - it->_offset) / nColorStops;
+          nColorStops--;
+          dOffset = it->_offset;
+          while (nColorStops) {
+            it++;
+            dOffset += incr;
+            it->_offset = dOffset;
+            it->_bAutoOffset = false;
+            nColorStops--;
+          }
+        }
+        // forward to next range
+        it = it2;
+      }
+      // add the color stops
+      std::for_each(_stops.begin(), _stops.end(), [=](auto &n) {
+        if (n._bRGBA)
+          cairo_pattern_add_color_stop_rgba(_pattern, n._offset, n._r, n._g,
+                                            n._b, n._a);
+        else
+          cairo_pattern_add_color_stop_rgb(_pattern, n._offset, n._r, n._g,
+                                           n._b);
+      });
+
+      cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
       _type = paintType::pattern;
       _bLoaded = true;
     }
@@ -1201,9 +1315,7 @@ bool uxdevice::Paint::isRadialGradient(const std::string &s) {
   if (s.find("radial-gradient") == std::string::npos)
     return false;
 
-
   return true;
-
 }
 
 bool uxdevice::Paint::patch(const std::string &s) { return false; }
@@ -1231,9 +1343,15 @@ void uxdevice::Paint::emit(cairo_t *cr) {
   }
 }
 
-void uxdevice::Paint::emit(cairo_t *cr, double w, double h) {
-  if (!isLoaded())
+void uxdevice::Paint::emit(cairo_t *cr, double x, double y, double w, double h) {
+  if (!isLoaded()) {
     create();
+
+    // adjust to user space
+    if(_type == paintType::pattern || _type == paintType::image)
+      translate(-x,-y);
+  }
+
   if (isLoaded()) {
     switch (_type) {
     case paintType::none:
@@ -1576,6 +1694,30 @@ void uxdevice::platform::rectangle(double x, double y, double width,
 void uxdevice::platform::AREA::invoke(const DisplayUnitContext &context) {
   cairo_move_to(context.cr, x, y);
 }
+void uxdevice::platform::AREA::shrink(double a) {
+  switch (type) {
+  case areaType::none:
+    break;
+  case areaType::circle:
+    x += a;
+    y += a;
+    rx -= a;
+    break;
+  case areaType::ellipse:
+    x += a;
+    y += a;
+    rx -= a;
+    ry -= a;
+    break;
+  case areaType::rectangle:
+  case areaType::roundedRectangle:
+    x += a;
+    y += a;
+    w -= a * 2;
+    h -= a * 2;
+    break;
+  }
+}
 
 /**
 \internal
@@ -1751,7 +1893,6 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
                            context.AREA()->y);
   cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
                   context.AREA()->w, context.AREA()->h);
-   cairo_surface_write_to_png (textImage, "textImage.png");
   cairo_fill(context.cr);
 }
 
@@ -2090,7 +2231,15 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
-  const AREA &area = *context.AREA();
+  // include line width for the size of the object
+  // if the area will be stroked.
+
+  AREA area = *context.AREA();
+
+  if (context.validatePEN()) {
+    double dWidth = cairo_get_line_width(context.cr) / 2;
+    area.shrink(dWidth);
+  }
 
   switch (context.AREA()->type) {
   case areaType::none:
@@ -2138,7 +2287,8 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
     break;
   case areaType::circle:
     cairo_new_sub_path(context.cr);
-    cairo_arc(context.cr, area.x, area.y, area.rx, 0., 2 * PI);
+    cairo_arc(context.cr, area.x + area.rx, area.y + area.rx, area.rx, 0.,
+              2 * PI);
     cairo_close_path(context.cr);
     break;
 
@@ -2152,14 +2302,15 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
     cairo_restore(context.cr);
     break;
   }
-
+  // fill using the adjusted area
   if (context.validateBACKGROUND()) {
-    context.BACKGROUND()->emit(context.cr, context.AREA()->w,
-                               context.AREA()->h);
+    context.BACKGROUND()->emit(context.cr, area.x, area.y, area.w, area.h);
     cairo_fill_preserve(context.cr);
   }
+
   if (context.validatePEN()) {
-    context.PEN()->emit(context.cr);
+    context.PEN()->emit(context.cr, context.AREA()->x, context.AREA()->y,
+                        context.AREA()->w, context.AREA()->h);
     cairo_stroke(context.cr);
   }
 }
@@ -2169,7 +2320,7 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
-  //emit(context.cr);
+  // emit(context.cr);
 }
 
 /**
@@ -2177,7 +2328,7 @@ void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
 \brief The function invokes the color operation
 */
 void uxdevice::platform::BACKGROUND::invoke(const DisplayUnitContext &context) {
-  //emit(context.cr);
+  // emit(context.cr);
 }
 
 void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {

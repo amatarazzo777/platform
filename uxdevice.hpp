@@ -383,13 +383,28 @@ enum class gradientType { none, linear, radial };
 
 using ColorStop = class ColorStop {
 public:
-  double offset;
-  double r;
-  double g;
-  double b;
-  double a;
+  ColorStop(u_int32_t c);
+  ColorStop(double r, double g, double b);
+  ColorStop(const std::string &s);
+  ColorStop(const std::string &s, double a);
+
+  ColorStop(double o, u_int32_t c);
+  ColorStop(double o, double r, double g, double b);
+  ColorStop(double o, double r, double g, double b, double a);
+  ColorStop(double o, const std::string &s);
+  ColorStop(double o, const std::string &s, double a);
+  void parseColor(const std::string &s);
+
+  bool _bAutoOffset = false;
+  bool _bRGBA = false;
+  double _offset = 0;
+  double _r = 0;
+  double _g = 0;
+  double _b = 0;
+  double _a = 1;
 };
 typedef std::vector<ColorStop> ColorStops;
+typedef std::vector<ColorStop>::iterator ColorStopsIterator;
 
 using Paint = class Paint : public Matrix {
 public:
@@ -443,7 +458,7 @@ public:
 
   ~Paint();
   void emit(cairo_t *cr);
-  void emit(cairo_t *cr, double w, double h);
+  void emit(cairo_t *cr,double x, double y, double w, double h);
   void filter(filterType ft) {
     if (_pattern)
       cairo_pattern_set_filter(_pattern, static_cast<cairo_filter_t>(ft));
@@ -563,8 +578,8 @@ public:
                   double yOffset = 1.0);
   void textShadow(const std::string &c, int r = 3, double xOffset = 1.0,
                   double yOffset = 1.0);
-  void textShadow(const std::string &c, double w, double h, int r = 3,
-                  double xOffset = 1.0, double yOffset = 1.0);
+  void textShadow(const std::string &c, double w, double h, int r,
+                  double xOffset, double yOffset);
 
   void textShadow(double _r, double _g, double _b, int r = 3,
                   double xOffset = 1.0, double yOffset = 1.0);
@@ -593,7 +608,7 @@ public:
   void area(double x, double y, double w, double h);
   void area(double x, double y, double w, double h, double rx, double ry);
   void area(double cx, double cy, double r) { areaCircle(cx, cy, r); }
-  void areaCircle(double cx, double cy, double r);
+  void areaCircle(double x, double y, double d);
   void areaEllipse(double cx, double cy, double rx, double ry);
   void drawText(void);
   void drawImage(void);
@@ -739,7 +754,7 @@ private:
 
     AREA(void) {}
     AREA(double _cx, double _cy, double _r)
-        : x(_cx), y(_cy), w(_r),h(_r), rx(_r), type(areaType::circle) {}
+        : x(_cx), y(_cy), w(_r), h(_r), rx(_r), type(areaType::circle) {}
     AREA(areaType _type, double _x, double _y, double p3, double p4)
         : x(_x), y(_y), type(_type) {
       if (type == areaType::rectangle) {
@@ -754,8 +769,11 @@ private:
         : x(_x), y(_y), w(_w), h(_h), rx(_rx), ry(_ry),
           type(areaType::roundedRectangle) {}
     ~AREA() {}
+    AREA(const AREA &other) { *this = other; };
+    void shrink(double dWidth);
     double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
     areaType type = areaType::none;
+
     void invoke(const DisplayUnitContext &context);
   };
 
