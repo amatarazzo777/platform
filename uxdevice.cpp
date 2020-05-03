@@ -56,10 +56,12 @@ void uxdevice::platform::render(const event &evt) {
     context.set(n.get());
     n->invoke(context);
 
-    if (cairo_status(context.cr)) {
+    cairo_status_t status = cairo_status(context.cr);
+    if (status) {
       std::stringstream sError;
       sError << "ERR_CAIRO render loop "
-             << "  " << __FILE__ << " " << __func__;
+             << "  " << __FILE__ << " " << __func__ << " "
+             << cairo_status_to_string(status);
       throw std::runtime_error(sError.str());
     }
   }
@@ -124,19 +126,22 @@ void uxdevice::platform::dispatchEvent(const event &evt) {
     break;
   case eventType::wheel:
     break;
+
+  case eventType::focus:
+    break;
+  case eventType::blur:
+    break;
+  case eventType::mouseenter:
+    break;
+  case eventType::click:
+    break;
+  case eventType::dblclick:
+    break;
+  case eventType::contextmenu:
+    break;
+  case eventType::mouseleave:
+    break;
   }
-/* these events do not come from the platform. However,
-they are spawned from conditions based upon the platform events.
-*/
-#if 0
-eventType::focus
-eventType::blur
-eventType::mouseenter
-eventType::click
-eventType::dblclick
-eventType::contextmenu
-eventType::mouseleave
-#endif
 }
 /**
 \internal
@@ -1076,7 +1081,10 @@ uxdevice::ColorStop::ColorStop(double o, double r, double g, double b, double a)
 uxdevice::ColorStop::ColorStop(const std::string &s) : ColorStop(-1, s) {
   _bAutoOffset = true;
 }
-
+uxdevice::ColorStop::ColorStop(const std::string &s, double a)
+    : ColorStop(-1, s, a) {
+  _bAutoOffset = true;
+}
 uxdevice::ColorStop::ColorStop(double o, const std::string &s) {
   _bAutoOffset = false;
   _bRGBA = false;
@@ -1180,8 +1188,9 @@ bool uxdevice::Paint::create(void) {
 
       // a .svg file is named
     } else if (_description.find(".svg") != std::string::npos) {
-      _image = platform::cairo_image_surface_create_from_svg(
-          _description.data(), _width, _height);
+
+      _image = platform::imageSurfaceSVG(_description.data(), _width, _height);
+
       if (_image) {
         _pattern = cairo_pattern_create_for_surface(_image);
         cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
@@ -1202,7 +1211,7 @@ bool uxdevice::Paint::create(void) {
       _r = _pangoColor.red / 65535.0;
       _g = _pangoColor.green / 65535.0;
       _b = _pangoColor.blue / 65535.0;
-      // a = pangoColor.alpha / 65535.0;
+      _a = 1;
       _type = paintType::color;
       _bLoaded = true;
     }
@@ -1221,8 +1230,8 @@ bool uxdevice::Paint::create(void) {
     if (_pattern) {
 
       // provide auto offsets
-
       bool bDone = false;
+      bool bEdgeEnd = false;
 
       // first one, if auto offset set to
       //   0 - the beginning of the color stops
@@ -1243,20 +1252,27 @@ bool uxdevice::Paint::create(void) {
         // not found, the last item in color stops did not have a value,
         // assign it 1.0
         if (it2 == _stops.end()) {
-          it2--;
-          // edge case
-          if (it2->_bAutoOffset) {
-            it2->_bAutoOffset = false;
-            it2->_offset = 1;
-          }
+          bEdgeEnd = true;
+          bDone = true;
+          // very last one has a setting
+        } else if (it2 == _stops.end() - 1) {
           bDone = true;
         }
 
         // distribute offsets equally across range
         int nColorStops = std::distance(it, it2);
-        if (nColorStops > 0) {
-          double incr = (it2->_offset - it->_offset) / nColorStops;
+        if (bEdgeEnd)
           nColorStops--;
+
+        if (nColorStops > 0) {
+          double incr = 0;
+          if (bEdgeEnd) {
+            incr = (1 - it->_offset) / nColorStops;
+          } else {
+            incr = (it2->_offset - it->_offset) / nColorStops;
+            nColorStops--;
+          }
+
           dOffset = it->_offset;
           while (nColorStops) {
             it++;
@@ -1332,24 +1348,29 @@ void uxdevice::Paint::emit(cairo_t *cr) {
       cairo_set_source_rgba(cr, _r, _g, _b, _a);
       break;
     case paintType::pattern:
-      cairo_pattern_set_matrix(_pattern, &_matrix);
-      cairo_set_source(cr, _pattern);
+      if (_pattern) {
+        cairo_pattern_set_matrix(_pattern, &_matrix);
+        cairo_set_source(cr, _pattern);
+      }
       break;
     case paintType::image:
-      cairo_pattern_set_matrix(_pattern, &_matrix);
-      cairo_set_source_surface(cr, _image, 0, 0);
+      if (_image) {
+        cairo_pattern_set_matrix(_pattern, &_matrix);
+        cairo_set_source_surface(cr, _image, 0, 0);
+      }
       break;
     }
   }
 }
 
-void uxdevice::Paint::emit(cairo_t *cr, double x, double y, double w, double h) {
+void uxdevice::Paint::emit(cairo_t *cr, double x, double y, double w,
+                           double h) {
   if (!isLoaded()) {
     create();
 
     // adjust to user space
-    if(_type == paintType::pattern || _type == paintType::image)
-      translate(-x,-y);
+    if (_type == paintType::pattern || _type == paintType::image)
+      translate(-x, -y);
   }
 
   if (isLoaded()) {
@@ -1360,12 +1381,16 @@ void uxdevice::Paint::emit(cairo_t *cr, double x, double y, double w, double h) 
       cairo_set_source_rgba(cr, _r, _g, _b, _a);
       break;
     case paintType::pattern:
-      cairo_pattern_set_matrix(_pattern, &_matrix);
-      cairo_set_source(cr, _pattern);
+      if (_pattern) {
+        cairo_pattern_set_matrix(_pattern, &_matrix);
+        cairo_set_source(cr, _pattern);
+      }
       break;
     case paintType::image:
-      cairo_pattern_set_matrix(_pattern, &_matrix);
-      cairo_set_source_surface(cr, _image, 0, 0);
+      if (_image) {
+        cairo_pattern_set_matrix(_pattern, &_matrix);
+        cairo_set_source_surface(cr, _image, 0, 0);
+      }
       break;
     }
   }
@@ -2211,11 +2236,12 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
-
-  cairo_set_source_surface(context.cr, context.IMAGE()->image,
-                           context.AREA()->x, context.AREA()->y);
-  cairo_mask_surface(context.cr, context.IMAGE()->image, context.AREA()->x,
-                     context.AREA()->y);
+  if (context.IMAGE()->image) {
+    cairo_set_source_surface(context.cr, context.IMAGE()->image,
+                             context.AREA()->x, context.AREA()->y);
+    cairo_mask_surface(context.cr, context.IMAGE()->image, context.AREA()->x,
+                       context.AREA()->y);
+  }
 }
 
 /**
@@ -2317,20 +2343,8 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief The function invokes the color operation
+\brief call previously bound function with the cairo context.
 */
-void uxdevice::platform::PEN::invoke(const DisplayUnitContext &context) {
-  // emit(context.cr);
-}
-
-/**
-\internal
-\brief The function invokes the color operation
-*/
-void uxdevice::platform::BACKGROUND::invoke(const DisplayUnitContext &context) {
-  // emit(context.cr);
-}
-
 void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
   func(context.cr);
 }
@@ -2339,11 +2353,13 @@ void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
 \internal
 \brief uses gio file streaming.
 */
-gboolean uxdevice::platform::read_contents(const gchar *file_name,
-                                           guint8 **contents, gsize *length) {
+cairo_status_t uxdevice::platform::read_contents(const gchar *file_name,
+                                                 guint8 **contents,
+                                                 gsize *length) {
   GFile *file;
   GFileInputStream *input_stream;
   gboolean success = FALSE;
+  cairo_status_t status = CAIRO_STATUS_SUCCESS;
 
   file = g_file_new_for_commandline_arg(file_name);
   input_stream = g_file_read(file, NULL, NULL);
@@ -2359,34 +2375,60 @@ gboolean uxdevice::platform::read_contents(const gchar *file_name,
       *contents = g_new(guint8, *length);
       success = g_input_stream_read_all(G_INPUT_STREAM(input_stream), *contents,
                                         *length, &bytes_read, NULL, NULL);
+      if (!success)
+        status = CAIRO_STATUS_READ_ERROR;
+
       g_object_unref(file_info);
+    } else {
+      status = CAIRO_STATUS_READ_ERROR;
     }
     g_object_unref(input_stream);
+  } else {
+    status = CAIRO_STATUS_FILE_NOT_FOUND;
   }
 
   g_object_unref(file);
 
-  return success;
+  return status;
 }
 
-cairo_surface_t *uxdevice::platform::cairo_image_surface_create_from_svg(
-    const char *filename, double width, double height) {
-  guint8 *contents = NULL;
-  gsize length;
-  RsvgHandle *handle;
+/**
+\internal
+\brief creates an image surface from an svg.
+ In that the null objects are returned. The routine does not maintain
+the SVG data.
+*/
+cairo_surface_t *uxdevice::platform::imageSurfaceSVG(const char *filename,
+                                                     double width,
+                                                     double height) {
+
+  guint8 *contents = nullptr;
+  gsize length = 0;
+  RsvgHandle *handle = nullptr;
   RsvgDimensionData dimensions;
+  cairo_t *cr = nullptr;
   cairo_surface_t *img = nullptr;
+  cairo_status_t status = CAIRO_STATUS_SUCCESS;
+  double dWidth = 0;
+  double dHeight = 0;
 
-  if (!read_contents(filename, &contents, &length))
-    return nullptr;
+  // read the file.
+  status = read_contents(filename, &contents, &length);
+  if (status != CAIRO_STATUS_SUCCESS) {
+    goto error_exit;
+  }
 
+  // create a rsvg handle
   handle = rsvg_handle_new_from_data(contents, length, NULL);
   if (!handle) {
     g_free(contents);
-    return nullptr;
+    status = CAIRO_STATUS_READ_ERROR;
+    goto error_exit;
   }
 
-  double dWidth = width, dHeight = height;
+  // scale to the image requested.
+  dWidth = width;
+  dHeight = height;
   rsvg_handle_get_dimensions(handle, &dimensions);
 
   if (dWidth < 1) {
@@ -2400,11 +2442,30 @@ cairo_surface_t *uxdevice::platform::cairo_image_surface_create_from_svg(
   } else {
     dHeight /= dimensions.height;
   }
+
   // render the image to surface
   img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-  cairo_t *cr = cairo_create(img);
+  status = cairo_surface_status(img);
+  if (status != CAIRO_STATUS_SUCCESS) {
+    goto error_exit;
+  }
+
+  cr = cairo_create(img);
+  status = cairo_status(cr);
+  if (status != CAIRO_STATUS_SUCCESS) {
+    goto error_exit;
+  }
+
   cairo_scale(cr, dWidth, dHeight);
-  rsvg_handle_render_cairo(handle, cr);
+  status = cairo_status(cr);
+  if (status != CAIRO_STATUS_SUCCESS) {
+    goto error_exit;
+  }
+
+  if (!rsvg_handle_render_cairo(handle, cr)) {
+    status = CAIRO_STATUS_READ_ERROR;
+    goto error_exit;
+  }
 
   // clean up
   cairo_destroy(cr);
@@ -2412,8 +2473,24 @@ cairo_surface_t *uxdevice::platform::cairo_image_surface_create_from_svg(
   g_object_unref(handle);
 
   return img;
+
+error_exit:
+  if (cr)
+    cairo_destroy(cr);
+  if (img)
+    cairo_surface_destroy(img);
+  if (contents)
+    g_free(contents);
+  if (handle)
+    g_object_unref(handle);
+
+  return nullptr;
 }
 
+/**
+\internal
+\brief reads the image and creates a cairo surface image.
+*/
 void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
   if (bLoaded)
     return;
@@ -2422,9 +2499,13 @@ void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
     image =
         cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
 
+    // if not successful read, set the contents to a null pointer.
+    if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS)
+      image = nullptr;
+
   } else if (context.IMAGE()->fileName.find(".svg") != std::string::npos) {
-    image = cairo_image_surface_create_from_svg(
-        context.IMAGE()->fileName.data(), context.AREA()->w, context.AREA()->h);
+    image = imageSurfaceSVG(context.IMAGE()->fileName.data(), context.AREA()->w,
+                            context.AREA()->h);
   }
 
   if (image)

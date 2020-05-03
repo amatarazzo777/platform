@@ -304,7 +304,6 @@ enum op_t {
   opHSLColor = CAIRO_OPERATOR_HSL_COLOR,
   opHSLLuminosity = CAIRO_OPERATOR_HSL_LUMINOSITY
 };
-
 enum class alignment {
   left = PangoAlignment::PANGO_ALIGN_LEFT,
   center = PangoAlignment::PANGO_ALIGN_CENTER,
@@ -430,7 +429,7 @@ public:
     if (other._pattern)
       _pattern = cairo_pattern_reference(other._pattern);
 
-    if (_image)
+    if (other._image)
       _image = cairo_surface_reference(other._image);
 
     _r = other._r;
@@ -445,20 +444,10 @@ public:
     _pangoColor = other._pangoColor;
     _bLoaded = other._bLoaded;
   }
-  Paint(Paint &&) {
-    std::cout << "Move constructor" << std::endl << std::flush;
-  }
-  Paint &operator=(Paint other) {
-    std::cout << "copy assignment, copy-and-swap form" << std::endl
-              << std::flush;
-  }
-  Paint &operator=(Paint &&other) {
-    std::cout << "Move assignment operator" << std::endl << std::flush;
-  }
 
   ~Paint();
   void emit(cairo_t *cr);
-  void emit(cairo_t *cr,double x, double y, double w, double h);
+  void emit(cairo_t *cr, double x, double y, double w, double h);
   void filter(filterType ft) {
     if (_pattern)
       cairo_pattern_set_filter(_pattern, static_cast<cairo_filter_t>(ft));
@@ -506,6 +495,7 @@ private:
 \brief The platform contains logic to connect the document object model to the
 local operating system.
 */
+
 class platform {
 public:
   platform(const eventHandler &evtDispatcher, const errorHandler &fn);
@@ -610,6 +600,10 @@ public:
   void area(double cx, double cy, double r) { areaCircle(cx, cy, r); }
   void areaCircle(double x, double y, double d);
   void areaEllipse(double cx, double cy, double rx, double ry);
+  void areaLines(std::vector<double> lines);
+  //void areaPath(std::vector<PathStep> path);
+
+
   void drawText(void);
   void drawImage(void);
   void drawArea(void);
@@ -666,11 +660,11 @@ public:
   bool inClip(double x, double y);
 
   static void blurImage(cairo_surface_t *img, int radius);
-  static gboolean read_contents(const gchar *file_name, guint8 **contents,
-                                gsize *length);
+  static cairo_status_t read_contents(const gchar *file_name, guint8 **contents,
+                                      gsize *length);
+
   static cairo_surface_t *
-  cairo_image_surface_create_from_svg(const char *filename, double width = -1,
-                                      double height = -1);
+  imageSurfaceSVG(const char *filename, double width = -1, double height = -1);
 
 private:
   void drawCaret(const int x, const int y, const int h);
@@ -824,7 +818,7 @@ private:
         double radius1, const ColorStops &cs)
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~PEN() {}
-    void invoke(const DisplayUnitContext &context);
+    void invoke(const DisplayUnitContext &context) {}
   };
 
   using BACKGROUND = class BACKGROUND : public DisplayUnit, public Paint {
@@ -845,7 +839,7 @@ private:
                double radius1, const ColorStops &cs)
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~BACKGROUND() {}
-    void invoke(const DisplayUnitContext &context);
+    void invoke(const DisplayUnitContext &context) {}
   };
 
   using ALIGN = class ALIGN : public DisplayUnit {
