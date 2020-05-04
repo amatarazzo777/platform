@@ -1158,7 +1158,8 @@ uxdevice::Paint::~Paint() {
 /**
 \brief The routine handles the creation of the pattern or surface.
 Patterns can be a image file, a description of a linear, actual parameters of
-linear, a description of a radial, the actual radial parameters stored
+linear, a description of a radial, the actual radial parameters stored.
+SVG inline or a base64 data set.
 
 */
 bool uxdevice::Paint::create(void) {
@@ -1166,40 +1167,26 @@ bool uxdevice::Paint::create(void) {
   if (_bLoaded)
     return true;
 
+  if (_description.size() == 0 && _stops.size() == 0) {
+    return false;
+  }
+
   // if a description was provided, determine how it should be interpreted
-  if (_description.size() != 0) {
-    // a .png file is named
-    if (_description.find(".png") != std::string::npos) {
-      _image = cairo_image_surface_create_from_png(_description.data());
+  _image = platform::readImage(_description, _width, _height);
 
-      if (cairo_surface_status(_image) != CAIRO_STATUS_SUCCESS) {
-        _image = nullptr;
-      }
+  if (_image) {
+    _width = cairo_image_surface_get_width(_image);
+    _height = cairo_image_surface_get_height(_image);
+    _pattern = cairo_pattern_create_for_surface(_image);
+    cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
+    cairo_pattern_set_filter(_pattern, CAIRO_FILTER_FAST);
+    _type = paintType::pattern;
+    _bLoaded = true;
 
-      if (_image) {
-        _width = cairo_image_surface_get_width(_image);
-        _height = cairo_image_surface_get_height(_image);
-        _pattern = cairo_pattern_create_for_surface(_image);
-        cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
-        cairo_pattern_set_filter(_pattern, CAIRO_FILTER_FAST);
-        _type = paintType::pattern;
-        _bLoaded = true;
-      }
+    // determine if the description is another form such as a gradient or color.
+  } else if (_description.size() > 0) {
 
-      // a .svg file is named
-    } else if (_description.find(".svg") != std::string::npos) {
-
-      _image = platform::imageSurfaceSVG(_description.data(), _width, _height);
-
-      if (_image) {
-        _pattern = cairo_pattern_create_for_surface(_image);
-        cairo_pattern_set_extend(_pattern, CAIRO_EXTEND_REPEAT);
-        cairo_pattern_set_filter(_pattern, CAIRO_FILTER_FAST);
-        _type = paintType::pattern;
-        _bLoaded = true;
-      }
-
-    } else if (isLinearGradient(_description)) {
+    if (isLinearGradient(_description)) {
       _gradientType = gradientType::linear;
 
     } else if (isRadialGradient(_description)) {
@@ -1218,6 +1205,7 @@ bool uxdevice::Paint::create(void) {
   }
 
   // still more processing to do, -- create gradients
+  // the parsing above for gradients populates this data.
   if (!_bLoaded && _stops.size() > 0) {
 
     if (_gradientType == gradientType::linear) {
@@ -1227,9 +1215,8 @@ bool uxdevice::Paint::create(void) {
       _pattern = cairo_pattern_create_radial(_cx0, _cy0, _radius0, _cx1, _cy1,
                                              _radius1);
     }
+    // provide auto offsets
     if (_pattern) {
-
-      // provide auto offsets
       bool bDone = false;
       bool bEdgeEnd = false;
 
@@ -1317,10 +1304,12 @@ radial-gradient(ellipse at center, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
 51%,#7db9e8 100%);
 
 */
+const std::string_view sLinearPattern = "linear-gradient";
+const std::string_view sRadialPattern = "radial-gradient";
 
 bool uxdevice::Paint::isLinearGradient(const std::string &s) {
 
-  if (s.find("linear-gradient") == std::string::npos)
+  if (s.compare(0, sLinearPattern.size(), sLinearPattern) != 0)
     return false;
 
   return true;
@@ -1328,7 +1317,7 @@ bool uxdevice::Paint::isLinearGradient(const std::string &s) {
 
 bool uxdevice::Paint::isRadialGradient(const std::string &s) {
 
-  if (s.find("radial-gradient") == std::string::npos)
+  if (s.compare(0, sLinearPattern.size(), sLinearPattern) != 0)
     return false;
 
   return true;
@@ -1716,7 +1705,7 @@ void uxdevice::platform::rectangle(double x, double y, double width,
 \internal
 \brief The drawText function provides textual character rendering.
 */
-void uxdevice::platform::AREA::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::AREA::invoke(DisplayUnitContext &context) {
   cairo_move_to(context.cr, x, y);
 }
 void uxdevice::platform::AREA::shrink(double a) {
@@ -1748,7 +1737,7 @@ void uxdevice::platform::AREA::shrink(double a) {
 \internal
 \brief The FONT object provides contextual font object for library.
 */
-void uxdevice::platform::FONT::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::FONT::invoke(DisplayUnitContext &context) {
   fontDescription = pango_font_description_from_string(description.data());
 }
 
@@ -1770,11 +1759,16 @@ void uxdevice::platform::ALIGN::emit(PangoLayout *layout) {
 \internal
 \brief The drawText function provides textual character rendering.
 */
-void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
   // check the context before operating
-  if (!context.validateAREA() || !context.validateSTRING()) {
+  bool bColor =context.validatePEN() ||
+      (context.validateTEXTOUTLINE() || context.validateTEXTFILL());
+
+  if (!(bColor && (context.validateAREA() && context.validateSTRING() &&
+      context.validateFONT()))) {
     std::stringstream sError;
-    sError << "ERR_DRAWTEXT AREA or STRING not set. "
+    sError << "ERR DRAWTEXT AREA, STRING, FONT, "
+           << "PEN, TEXTOUTLINE or TEXTFILL not set."
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
@@ -1803,7 +1797,7 @@ void uxdevice::platform::DRAWTEXT::invoke(const DisplayUnitContext &context) {
       context.ALIGN()->emit(layout);
     }
 
-    // pangoColor
+    // set the width and height of the layout.
     pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
     pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
 
@@ -2228,7 +2222,7 @@ void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
 \internal
 \brief The function draws the image
 */
-void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::DRAWIMAGE::invoke(DisplayUnitContext &context) {
   // check the context before operating
   if (!context.validateAREA() || !context.validateIMAGE()) {
     std::stringstream sError;
@@ -2236,6 +2230,12 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
            << "  " << __FILE__ << " " << __func__;
     throw std::runtime_error(sError.str());
   }
+
+  if (!context.IMAGE()->bLoaded && context.IMAGE()->bIsSVG) {
+    context.IMAGE()->image = platform::imageSurfaceSVG(
+        true, context.IMAGE()->_data, context.AREA()->w, context.AREA()->h);
+  }
+
   if (context.IMAGE()->image) {
     cairo_set_source_surface(context.cr, context.IMAGE()->image,
                              context.AREA()->x, context.AREA()->y);
@@ -2246,12 +2246,12 @@ void uxdevice::platform::DRAWIMAGE::invoke(const DisplayUnitContext &context) {
 
 /**
 \internal
-\brief The function draws the image
+\brief The function draws an area
 */
-void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::DRAWAREA::invoke(DisplayUnitContext &context) {
   // check the context before operating
-  if (!context.validateAREA() &&
-      (!context.validateBACKGROUND() || !context.validatePEN())) {
+  if (!(context.validateAREA() &&
+      (context.validateBACKGROUND() || !context.validatePEN()))) {
     std::stringstream sError;
     sError << "ERR_DRAWBOX AREA or IMAGE not set. "
            << "  " << __FILE__ << " " << __func__;
@@ -2345,7 +2345,7 @@ void uxdevice::platform::DRAWAREA::invoke(const DisplayUnitContext &context) {
 \internal
 \brief call previously bound function with the cairo context.
 */
-void uxdevice::platform::FUNCTION::invoke(const DisplayUnitContext &context) {
+void uxdevice::platform::FUNCTION::invoke(DisplayUnitContext &context) {
   func(context.cr);
 }
 
@@ -2398,7 +2398,8 @@ cairo_status_t uxdevice::platform::read_contents(const gchar *file_name,
  In that the null objects are returned. The routine does not maintain
 the SVG data.
 */
-cairo_surface_t *uxdevice::platform::imageSurfaceSVG(const char *filename,
+cairo_surface_t *uxdevice::platform::imageSurfaceSVG(bool bDataPassed,
+                                                     std::string &info,
                                                      double width,
                                                      double height) {
 
@@ -2412,12 +2413,16 @@ cairo_surface_t *uxdevice::platform::imageSurfaceSVG(const char *filename,
   double dWidth = 0;
   double dHeight = 0;
 
-  // read the file.
-  status = read_contents(filename, &contents, &length);
-  if (status != CAIRO_STATUS_SUCCESS) {
-    goto error_exit;
+  if (bDataPassed) {
+    contents = reinterpret_cast<guint8 *>(info.data());
+    length = info.size();
+  } else {
+    // read the file.
+    status = read_contents(info.data(), &contents, &length);
+    if (status != CAIRO_STATUS_SUCCESS) {
+      goto error_exit;
+    }
   }
-
   // create a rsvg handle
   handle = rsvg_handle_new_from_data(contents, length, NULL);
   if (!handle) {
@@ -2469,7 +2474,9 @@ cairo_surface_t *uxdevice::platform::imageSurfaceSVG(const char *filename,
 
   // clean up
   cairo_destroy(cr);
-  g_free(contents);
+  if (!bDataPassed)
+    g_free(contents);
+
   g_object_unref(handle);
 
   return img;
@@ -2479,34 +2486,129 @@ error_exit:
     cairo_destroy(cr);
   if (img)
     cairo_surface_destroy(img);
-  if (contents)
+  if (!bDataPassed && contents)
     g_free(contents);
   if (handle)
     g_object_unref(handle);
 
   return nullptr;
 }
+// from base64 decode snippet in c++
+//  stackoverflow.com/base64 decode snippet in c++ - Stack Overflow.html
+std::string base64_decode(const std::string_view in) {
+  // table from '+' to 'z'
+  const uint8_t lookup[] = {
+      62,  255, 62,  255, 63,  52,  53, 54, 55, 56, 57, 58, 59, 60, 61, 255,
+      255, 0,   255, 255, 255, 255, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
+      10,  11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+      255, 255, 255, 255, 63,  255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+      36,  37,  38,  39,  40,  41,  42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
+  static_assert(sizeof(lookup) == 'z' - '+' + 1);
+
+  std::string out;
+  int val = 0, valb = -8;
+  for (uint8_t c : in) {
+    if (c < '+' || c > 'z')
+      break;
+    c -= '+';
+    if (lookup[c] >= 64)
+      break;
+    val = (val << 6) + lookup[c];
+    valb += 6;
+    if (valb >= 0) {
+      out.push_back(char((val >> valb) & 0xFF));
+      valb -= 8;
+    }
+  }
+  return out;
+}
 
 /**
 \internal
 \brief reads the image and creates a cairo surface image.
 */
-void uxdevice::platform::IMAGE::invoke(const DisplayUnitContext &context) {
-  if (bLoaded)
-    return;
+const string dataPNG = "data:image/png;base64,";
+const string dataSVG = "<?xml";
 
-  if (context.IMAGE()->fileName.find(".png") != std::string::npos) {
-    image =
-        cairo_image_surface_create_from_png(context.IMAGE()->fileName.data());
+typedef struct _readInfo {
+  unsigned char *data;
+  int bufferLen;
+  int bufferPos;
+} readInfo;
+
+cairo_surface_t *uxdevice::platform::readImage(std::string &data, double w,
+                                               double h) {
+  cairo_surface_t *image = nullptr;
+
+  if (data.size() == 0)
+    return nullptr;
+
+  // data is passed as base 64 PNG?
+  if (data.compare(0, dataPNG.size(), dataPNG) == 0) {
+    std::string tmp =
+        base64_decode(std::string_view(data.data() + dataPNG.size()));
+
+    readInfo pngData;
+    pngData.bufferPos = 0;
+    pngData.bufferLen = tmp.size();
+    pngData.data = reinterpret_cast<unsigned char *>(tmp.data());
+
+    cairo_read_func_t fn = [](void *closure, unsigned char *data,
+                              unsigned int length) -> cairo_status_t {
+      readInfo *p = reinterpret_cast<readInfo *>(closure);
+
+      // requesting more than the size?
+      if (length > (p->bufferLen - p->bufferPos))
+        return CAIRO_STATUS_READ_ERROR;
+
+      memcpy(data, p->data + p->bufferPos, length);
+      p->bufferPos += length;
+
+      return CAIRO_STATUS_SUCCESS;
+    };
+
+    image = cairo_image_surface_create_from_png_stream(fn, &pngData);
 
     // if not successful read, set the contents to a null pointer.
     if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS)
       image = nullptr;
 
-  } else if (context.IMAGE()->fileName.find(".svg") != std::string::npos) {
-    image = imageSurfaceSVG(context.IMAGE()->fileName.data(), context.AREA()->w,
-                            context.AREA()->h);
+    // data in passed as a SVG text?
+    // defer until draw to know the size
+  } else if (data.compare(0, dataSVG.size(), dataSVG) == 0) {
+    image = imageSurfaceSVG(true, data, w, h);
+
+    // file name?
+  } else if (data.find(".png") != std::string::npos) {
+    image = cairo_image_surface_create_from_png(data.data());
+
+    // if not successful read, set the contents to a null pointer.
+    if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS)
+      image = nullptr;
+
+  } else if (data.find(".svg") != std::string::npos) {
+    image = imageSurfaceSVG(false, data, w, h);
   }
+
+  return image;
+}
+
+/**
+\internal
+\brief reads the image and creates a cairo surface image.
+*/
+void uxdevice::platform::IMAGE::invoke(DisplayUnitContext &context) {
+  if (bLoaded)
+    return;
+
+  if (!context.validateAREA()) {
+    std::stringstream sError;
+    sError << "ERR IMAGE AREA not set. "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+
+  image = readImage(_data, context.AREA()->w, context.AREA()->h);
 
   if (image)
     bLoaded = true;
@@ -2531,7 +2633,6 @@ void uxdevice::platform::resize(const int w, const int h) {
 #if defined(__linux__)
   if (context.xcbSurface) {
     cairo_xcb_surface_set_size(context.xcbSurface, w, h);
-
     context.preclear = true;
   }
 

@@ -601,8 +601,7 @@ public:
   void areaCircle(double x, double y, double d);
   void areaEllipse(double cx, double cy, double rx, double ry);
   void areaLines(std::vector<double> lines);
-  //void areaPath(std::vector<PathStep> path);
-
+  // void areaPath(std::vector<PathStep> path);
 
   void drawText(void);
   void drawImage(void);
@@ -659,12 +658,15 @@ public:
   void clip(bool bPreserve = false);
   bool inClip(double x, double y);
 
+  static cairo_surface_t *readImage(std::string &data, double w = -1,
+                                    double h = -1);
   static void blurImage(cairo_surface_t *img, int radius);
   static cairo_status_t read_contents(const gchar *file_name, guint8 **contents,
                                       gsize *length);
 
-  static cairo_surface_t *
-  imageSurfaceSVG(const char *filename, double width = -1, double height = -1);
+  static cairo_surface_t *imageSurfaceSVG(bool bDataPassed, std::string &data,
+                                          double width = -1,
+                                          double height = -1);
 
 private:
   void drawCaret(const int x, const int y, const int h);
@@ -721,14 +723,14 @@ private:
   public:
     virtual std::size_t index() = 0;
     virtual ~DisplayUnit() {}
-    virtual void invoke(const DisplayUnitContext &context) = 0;
+    virtual void invoke(DisplayUnitContext &context) = 0;
   };
 
   using CLEAROPTION = class CLEAROPTION : public DisplayUnit {
   public:
     VIRTUAL_INDEX(CLEAROPTION);
     CLEAROPTION(contextUnitIndex opt) : option(opt) {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
     contextUnitIndex option = MAX_idx;
   };
 
@@ -737,7 +739,7 @@ private:
     VIRTUAL_INDEX(ANTIALIAS);
     ANTIALIAS(antialias _antialias)
         : setting(static_cast<cairo_antialias_t>(_antialias)) {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
     void emit(cairo_t *cr) { cairo_set_antialias(cr, setting); }
     cairo_antialias_t setting;
   };
@@ -768,7 +770,7 @@ private:
     double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
     areaType type = areaType::none;
 
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
   };
 
   using STRING = class STRING : public DisplayUnit {
@@ -777,7 +779,7 @@ private:
     STRING(const std::string &s) : data(s) {}
     ~STRING() {}
     std::string data;
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using FONT = class FONT : public DisplayUnit {
@@ -800,7 +802,7 @@ private:
     bool bProvidedDescription = false;
     PangoFontDescription *fontDescription = nullptr;
 
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
   };
 
   using PEN = class PEN : public DisplayUnit, public Paint {
@@ -818,7 +820,7 @@ private:
         double radius1, const ColorStops &cs)
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~PEN() {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using BACKGROUND = class BACKGROUND : public DisplayUnit, public Paint {
@@ -839,7 +841,7 @@ private:
                double radius1, const ColorStops &cs)
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
     ~BACKGROUND() {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using ALIGN = class ALIGN : public DisplayUnit {
@@ -850,7 +852,7 @@ private:
     ~ALIGN() {}
     void emit(PangoLayout *layout);
     alignment setting = alignment::left;
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using EVENT = class EVENT : public DisplayUnit {
@@ -860,7 +862,7 @@ private:
     EVENT(eventHandler _eh) : fn(_eh){};
     ~EVENT() {}
     eventHandler fn;
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using TEXTSHADOW = class TEXTSHADOW : public DisplayUnit, public Paint {
@@ -892,7 +894,7 @@ private:
           x(xOffset), y(yOffset) {}
 
     ~TEXTSHADOW() {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
 
   public:
     unsigned short radius = 3;
@@ -922,7 +924,7 @@ private:
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs),
           lineWidth(_lineWidth) {}
 
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
 
   public:
     double lineWidth = .5;
@@ -945,7 +947,7 @@ private:
         : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
     ~TEXTFILL() {}
-    void invoke(const DisplayUnitContext &context) {}
+    void invoke(DisplayUnitContext &context) {}
   };
 
   using DRAWTEXT = class DRAWTEXT : public DisplayUnit {
@@ -970,7 +972,7 @@ private:
     cairo_surface_t *shadowImage = nullptr;
     PangoLayout *layout = nullptr;
 
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
   };
 
   using DRAWIMAGE = class DRAWIMAGE : public DisplayUnit {
@@ -979,7 +981,7 @@ private:
     DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
     DRAWIMAGE(void) {}
     ~DRAWIMAGE() {}
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
 
   private:
     AREA src;
@@ -991,7 +993,7 @@ private:
     VIRTUAL_INDEX(DRAWAREA);
     DRAWAREA() {}
     ~DRAWAREA() {}
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
 
   private:
   };
@@ -1002,7 +1004,7 @@ private:
     VIRTUAL_INDEX(FUNCTION);
     FUNCTION(CAIRO_FUNCTION _func) : func(_func) {}
     ~FUNCTION() {}
-    void invoke(const DisplayUnitContext &context);
+    void invoke(DisplayUnitContext &context);
 
   private:
     CAIRO_FUNCTION func;
@@ -1010,17 +1012,16 @@ private:
 
   using IMAGE = class IMAGE : public DisplayUnit {
   public:
-    enum ImageSystemType { none, cairo_type, magick_type };
-
     VIRTUAL_INDEX(IMAGE);
-    IMAGE(const std::string &_fileName) : fileName(_fileName) {}
+    IMAGE(const std::string &data) : _data(data) {}
     ~IMAGE() {
       if (image)
         cairo_surface_destroy(image);
     }
     cairo_surface_t *image = nullptr;
-    void invoke(const DisplayUnitContext &context);
-    std::string fileName;
+    void invoke(DisplayUnitContext &context);
+    std::string _data;
+    bool bIsSVG = false;
     bool bLoaded = false;
   };
 
