@@ -38,8 +38,8 @@ void uxdevice::platform::render(const event &evt) {
 
   double dx = evt.x;
   double dy = evt.y;
-  double dw = evt.width;
-  double dh = evt.height;
+  double dw = evt.w;
+  double dh = evt.h;
 
   cairo_push_group(context.cr);
   if (context.preclear) {
@@ -79,7 +79,7 @@ void uxdevice::platform::render(const event &evt) {
   xcb_flush(context.connection);
 
   auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> diff = end - start;
+  std::chrono::duration<double, std::milli> diff = end - start;
 
   lastTime = std::chrono::high_resolution_clock::now();
   cout << diff.count() << endl << flush;
@@ -101,12 +101,14 @@ necessary operation.
 */
 void uxdevice::platform::dispatchEvent(const event &evt) {
 
-  switch (evt.evtType) {
+  switch (evt.type) {
+  case eventType::none:
+    break;
   case eventType::paint: {
     render(evt);
   } break;
   case eventType::resize:
-    resize(evt.width, evt.height);
+    resize(evt.w, evt.h);
     break;
   case eventType::keydown: {
 
@@ -158,7 +160,6 @@ void uxdevice::platform::processEvents(void) {
   // setup the event dispatcher
   eventHandler ev = std::bind(&uxdevice::platform::dispatchEvent, this,
                               std::placeholders::_1);
-
   messageLoop();
 }
 
@@ -674,28 +675,29 @@ void uxdevice::platform::messageLoop(void) {
       xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)xcbEvent;
       dispatchEvent(event{
           eventType::mousemove,
-          motion->event_x,
-          motion->event_y,
+          (short)motion->event_x,
+          (short)motion->event_y,
       });
     } break;
     case XCB_BUTTON_PRESS: {
       xcb_button_press_event_t *bp = (xcb_button_press_event_t *)xcbEvent;
       if (bp->detail == XCB_BUTTON_INDEX_4 ||
           bp->detail == XCB_BUTTON_INDEX_5) {
-        dispatchEvent(event{eventType::wheel, bp->event_x, bp->event_y,
-                            bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1});
+        dispatchEvent(
+            event{eventType::wheel, (short)bp->event_x, (short)bp->event_y,
+                  (short)(bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1)});
 
       } else {
-        dispatchEvent(
-            event{eventType::mousedown, bp->event_x, bp->event_y, bp->detail});
+        dispatchEvent(event{eventType::mousedown, (short)bp->event_x,
+                            (short)bp->event_y, (short)bp->detail});
       }
     } break;
     case XCB_BUTTON_RELEASE: {
       xcb_button_release_event_t *br = (xcb_button_release_event_t *)xcbEvent;
       // ignore button 4 and 5 which are wheel events.
       if (br->detail != XCB_BUTTON_INDEX_4 && br->detail != XCB_BUTTON_INDEX_5)
-        dispatchEvent(
-            event{eventType::mouseup, br->event_x, br->event_y, br->detail});
+        dispatchEvent(event{eventType::mouseup, (short)br->event_x,
+                            (short)br->event_y, (short)br->detail});
     } break;
     case XCB_KEY_PRESS: {
       xcb_key_press_event_t *kp = (xcb_key_press_event_t *)xcbEvent;
@@ -726,8 +728,8 @@ void uxdevice::platform::messageLoop(void) {
           dispatchEvent(event{eventType::resize, newWidth, newHeight});
         }
 
-        dispatchEvent(
-            event{eventType::paint, eev->x, eev->y, eev->width, eev->height});
+        dispatchEvent(event{eventType::paint, (short)eev->x, (short)eev->y,
+                            (short)eev->width, (short)eev->height});
       }
     } break;
     case XCB_CONFIGURE_NOTIFY: {
@@ -1317,7 +1319,7 @@ bool uxdevice::Paint::isLinearGradient(const std::string &s) {
 
 bool uxdevice::Paint::isRadialGradient(const std::string &s) {
 
-  if (s.compare(0, sLinearPattern.size(), sLinearPattern) != 0)
+  if (s.compare(0, sRadialPattern.size(), sRadialPattern) != 0)
     return false;
 
   return true;
@@ -1761,11 +1763,11 @@ void uxdevice::platform::ALIGN::emit(PangoLayout *layout) {
 */
 void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
   // check the context before operating
-  bool bColor =context.validatePEN() ||
-      (context.validateTEXTOUTLINE() || context.validateTEXTFILL());
+  bool bColor = context.validatePEN() ||
+                (context.validateTEXTOUTLINE() || context.validateTEXTFILL());
 
   if (!(bColor && (context.validateAREA() && context.validateSTRING() &&
-      context.validateFONT()))) {
+                   context.validateFONT()))) {
     std::stringstream sError;
     sError << "ERR DRAWTEXT AREA, STRING, FONT, "
            << "PEN, TEXTOUTLINE or TEXTFILL not set."
@@ -1773,16 +1775,16 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
+  AREA &area = context.AREA();
   // create offscreen image of the text
   if (!textImage) {
     cairo_format_t format = CAIRO_FORMAT_ARGB32;
 
-    textImage = cairo_image_surface_create(format, context.AREA()->w,
-                                           context.AREA()->h);
+    textImage = cairo_image_surface_create(format, area.w, area.h);
     cairo_t *textCr = cairo_create(textImage);
 
     if (context.validateANTIALIAS()) {
-      context.ANTIALIAS()->emit(textCr);
+      context.ANTIALIAS().emit(textCr);
     }
 
     // clear the image with transparency
@@ -1790,16 +1792,16 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
     cairo_paint(textCr);
 
     layout = pango_cairo_create_layout(textCr);
-    pango_layout_set_text(layout, context.STRING()->data.data(), -1);
-    pango_layout_set_font_description(layout, context.FONT()->fontDescription);
+    pango_layout_set_text(layout, context.STRING().data.data(), -1);
+    pango_layout_set_font_description(layout, context.FONT().fontDescription);
 
     if (context.validateALIGN()) {
-      context.ALIGN()->emit(layout);
+      context.ALIGN().emit(layout);
     }
 
     // set the width and height of the layout.
-    pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
-    pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
+    pango_layout_set_width(layout, area.w * PANGO_SCALE);
+    pango_layout_set_height(layout, area.h * PANGO_SCALE);
 
     pango_cairo_update_layout(textCr, layout);
 
@@ -1830,34 +1832,32 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
 
       // text is filled and outlined.
       if (bFilled && bOutline) {
-        context.TEXTFILL()->emit(textCr);
+        context.TEXTFILL().emit(textCr);
         cairo_fill_preserve(textCr);
-        context.TEXTOUTLINE()->emit(textCr);
-        cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
+        context.TEXTOUTLINE().emit(textCr);
+        cairo_set_line_width(textCr, context.TEXTOUTLINE().lineWidth);
         cairo_stroke(textCr);
 
         // text is only filled.
       } else if (bFilled) {
-        context.TEXTFILL()->emit(textCr);
+        context.TEXTFILL().emit(textCr);
         cairo_fill(textCr);
 
         // text is only outlined.
       } else if (bOutline) {
-        context.TEXTOUTLINE()->emit(textCr);
-        cairo_set_line_width(textCr, context.TEXTOUTLINE()->lineWidth);
+        context.TEXTOUTLINE().emit(textCr);
+        cairo_set_line_width(textCr, context.TEXTOUTLINE().lineWidth);
         cairo_stroke(textCr);
       }
 
     } else {
       // no outline or fill defined, therefore the pen is used.
-      context.PEN()->emit(textCr);
+      context.PEN().emit(textCr);
       pango_cairo_show_layout(textCr, layout);
     }
 
     // free drawing context
     cairo_destroy(textCr);
-    g_object_unref(layout);
-    layout = nullptr;
   }
 
   // draw shadow if one exists
@@ -1866,53 +1866,42 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
 
       cairo_format_t format = CAIRO_FORMAT_ARGB32;
 
-      shadowImage = cairo_image_surface_create(format, context.AREA()->w,
-                                               context.AREA()->h);
+      shadowImage = cairo_image_surface_create(format, area.w, area.h);
       cairo_t *shadowCr = cairo_create(shadowImage);
       cairo_set_source_rgba(shadowCr, 0, 0, 0, 0);
       cairo_paint(shadowCr);
 
       if (context.validateANTIALIAS()) {
-        context.ANTIALIAS()->emit(shadowCr);
+        context.ANTIALIAS().emit(shadowCr);
       }
 
-      // create an image for the text
-      PangoLayout *layout = nullptr;
-      layout = pango_cairo_create_layout(shadowCr);
-      pango_layout_set_text(layout, context.STRING()->data.data(), -1);
-      pango_layout_set_font_description(layout,
-                                        context.FONT()->fontDescription);
-      if (context.validateALIGN()) {
-        context.ALIGN()->emit(layout);
-      }
+      context.TEXTSHADOW().emit(shadowCr);
 
-      context.TEXTSHADOW()->emit(shadowCr);
-
-      pango_layout_set_width(layout, context.AREA()->w * PANGO_SCALE);
-      pango_layout_set_height(layout, context.AREA()->h * PANGO_SCALE);
+      pango_layout_set_width(layout, area.w * PANGO_SCALE);
+      pango_layout_set_height(layout, area.h * PANGO_SCALE);
 
       pango_cairo_update_layout(shadowCr, layout);
       pango_cairo_show_layout(shadowCr, layout);
 
-      blurImage(shadowImage, context.TEXTSHADOW()->radius);
+      blurImage(shadowImage, context.TEXTSHADOW().radius);
       cairo_destroy(shadowCr);
-      g_object_unref(layout);
-      layout = nullptr;
     }
     cairo_save(context.cr);
-    context.TEXTSHADOW()->emit(context.cr);
-    cairo_mask_surface(context.cr, shadowImage,
-                       context.AREA()->x + context.TEXTSHADOW()->x,
-                       context.AREA()->y + context.TEXTSHADOW()->y);
+    context.TEXTSHADOW().emit(context.cr);
+    cairo_mask_surface(context.cr, shadowImage, area.x + context.TEXTSHADOW().x,
+                       area.y + context.TEXTSHADOW().y);
     cairo_restore(context.cr);
   }
 
   // move the text rendering to the display.
-  cairo_set_source_surface(context.cr, textImage, context.AREA()->x,
-                           context.AREA()->y);
-  cairo_rectangle(context.cr, context.AREA()->x, context.AREA()->y,
-                  context.AREA()->w, context.AREA()->h);
+  cairo_set_source_surface(context.cr, textImage, area.x, area.y);
+  cairo_rectangle(context.cr, area.x, area.y, area.w, area.h);
   cairo_fill(context.cr);
+
+  if (layout) {
+    g_object_unref(layout);
+    layout = nullptr;
+  }
 }
 
 /// Stack Blur Algorithm by Mario Klingemann <mario@quasimondo.com>
@@ -1923,7 +1912,12 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
 /// https://gist.github.com/benjamin9999/3809142
 /// http://www.antigrain.com/__code/include/agg_blur.h.html
 /// This version works only with RGBA color
-void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
+#define DEBUG
+#if defined(DEBUG)
+
+#endif // defined
+
+void uxdevice::platform::blurImage(cairo_surface_t *img, unsigned int radius) {
   static unsigned short const stackblur_mul[255] = {
       512, 512, 456, 512, 328, 456, 335, 512, 405, 328, 271, 456, 388, 335,
       292, 512, 454, 405, 364, 328, 298, 271, 496, 456, 420, 388, 360, 335,
@@ -2003,8 +1997,8 @@ void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
   unsigned int div = (radius * 2) + 1;
   unsigned char *stack = new unsigned char[div * 4];
 
-  int minY = 0;
-  int maxY = h;
+  unsigned int minY = 0;
+  unsigned int maxY = h;
 
   for (y = minY; y < maxY; y++) {
     sum_r = sum_g = sum_b = sum_a = sum_in_r = sum_in_g = sum_in_b = sum_in_a =
@@ -2109,8 +2103,8 @@ void uxdevice::platform::blurImage(cairo_surface_t *img, int radius) {
     }
   }
 
-  int minX = 0;
-  int maxX = w;
+  unsigned int minX = 0;
+  unsigned int maxX = w;
 
   for (x = minX; x < maxX; x++) {
     sum_r = sum_g = sum_b = sum_a = sum_in_r = sum_in_g = sum_in_b = sum_in_a =
@@ -2231,16 +2225,16 @@ void uxdevice::platform::DRAWIMAGE::invoke(DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-  if (!context.IMAGE()->bLoaded && context.IMAGE()->bIsSVG) {
-    context.IMAGE()->image = platform::imageSurfaceSVG(
-        true, context.IMAGE()->_data, context.AREA()->w, context.AREA()->h);
+  AREA &area = context.AREA();
+  IMAGE &image = context.IMAGE();
+
+  if (!image.bLoaded && image.bIsSVG) {
+    image._image = platform::imageSurfaceSVG(true, image._data, area.w, area.h);
   }
 
-  if (context.IMAGE()->image) {
-    cairo_set_source_surface(context.cr, context.IMAGE()->image,
-                             context.AREA()->x, context.AREA()->y);
-    cairo_mask_surface(context.cr, context.IMAGE()->image, context.AREA()->x,
-                       context.AREA()->y);
+  if (image._image) {
+    cairo_set_source_surface(context.cr, image._image, area.x, area.y);
+    cairo_mask_surface(context.cr, image._image, area.x, area.y);
   }
 }
 
@@ -2251,7 +2245,7 @@ void uxdevice::platform::DRAWIMAGE::invoke(DisplayUnitContext &context) {
 void uxdevice::platform::DRAWAREA::invoke(DisplayUnitContext &context) {
   // check the context before operating
   if (!(context.validateAREA() &&
-      (context.validateBACKGROUND() || !context.validatePEN()))) {
+        (context.validateBACKGROUND() || !context.validatePEN()))) {
     std::stringstream sError;
     sError << "ERR_DRAWBOX AREA or IMAGE not set. "
            << "  " << __FILE__ << " " << __func__;
@@ -2259,15 +2253,13 @@ void uxdevice::platform::DRAWAREA::invoke(DisplayUnitContext &context) {
   }
   // include line width for the size of the object
   // if the area will be stroked.
-
-  AREA area = *context.AREA();
-
+  AREA area = context.AREA();
   if (context.validatePEN()) {
     double dWidth = cairo_get_line_width(context.cr) / 2;
     area.shrink(dWidth);
   }
 
-  switch (context.AREA()->type) {
+  switch (area.type) {
   case areaType::none:
     break;
   case areaType::rectangle:
@@ -2317,7 +2309,6 @@ void uxdevice::platform::DRAWAREA::invoke(DisplayUnitContext &context) {
               2 * PI);
     cairo_close_path(context.cr);
     break;
-
   case areaType::ellipse:
     cairo_save(context.cr);
     cairo_translate(context.cr, area.x + area.rx / 2., area.y + area.ry / 2.);
@@ -2330,13 +2321,14 @@ void uxdevice::platform::DRAWAREA::invoke(DisplayUnitContext &context) {
   }
   // fill using the adjusted area
   if (context.validateBACKGROUND()) {
-    context.BACKGROUND()->emit(context.cr, area.x, area.y, area.w, area.h);
+    context.BACKGROUND().emit(context.cr, area.x, area.y, area.w, area.h);
     cairo_fill_preserve(context.cr);
   }
 
   if (context.validatePEN()) {
-    context.PEN()->emit(context.cr, context.AREA()->x, context.AREA()->y,
-                        context.AREA()->w, context.AREA()->h);
+    // use original non adjusted area.
+    AREA &area = context.AREA();
+    context.PEN().emit(context.cr, area.x, area.y, area.w, area.h);
     cairo_stroke(context.cr);
   }
 }
@@ -2493,51 +2485,15 @@ error_exit:
 
   return nullptr;
 }
-// from base64 decode snippet in c++
-//  stackoverflow.com/base64 decode snippet in c++ - Stack Overflow.html
-std::string base64_decode(const std::string_view in) {
-  // table from '+' to 'z'
-  const uint8_t lookup[] = {
-      62,  255, 62,  255, 63,  52,  53, 54, 55, 56, 57, 58, 59, 60, 61, 255,
-      255, 0,   255, 255, 255, 255, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
-      10,  11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-      255, 255, 255, 255, 63,  255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-      36,  37,  38,  39,  40,  41,  42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
-  static_assert(sizeof(lookup) == 'z' - '+' + 1);
-
-  std::string out;
-  int val = 0, valb = -8;
-  for (uint8_t c : in) {
-    if (c < '+' || c > 'z')
-      break;
-    c -= '+';
-    if (lookup[c] >= 64)
-      break;
-    val = (val << 6) + lookup[c];
-    valb += 6;
-    if (valb >= 0) {
-      out.push_back(char((val >> valb) & 0xFF));
-      valb -= 8;
-    }
-  }
-  return out;
-}
 
 /**
 \internal
 \brief reads the image and creates a cairo surface image.
 */
-const string dataPNG = "data:image/png;base64,";
-const string dataSVG = "<?xml";
-
-typedef struct _readInfo {
-  unsigned char *data;
-  int bufferLen;
-  int bufferPos;
-} readInfo;
-
 cairo_surface_t *uxdevice::platform::readImage(std::string &data, double w,
                                                double h) {
+  const string dataPNG = "data:image/png;base64,";
+  const string dataSVG = "<?xml";
   cairo_surface_t *image = nullptr;
 
   if (data.size() == 0)
@@ -2545,24 +2501,63 @@ cairo_surface_t *uxdevice::platform::readImage(std::string &data, double w,
 
   // data is passed as base 64 PNG?
   if (data.compare(0, dataPNG.size(), dataPNG) == 0) {
-    std::string tmp =
-        base64_decode(std::string_view(data.data() + dataPNG.size()));
+
+    typedef struct _readInfo {
+      unsigned char *data = nullptr;
+      size_t dataLen = 0;
+      int val = 0;
+      int valB = -8;
+      size_t decodePos = 0;
+    } readInfo;
 
     readInfo pngData;
-    pngData.bufferPos = 0;
-    pngData.bufferLen = tmp.size();
-    pngData.data = reinterpret_cast<unsigned char *>(tmp.data());
+
+    // from base64 decode snippet in c++
+    //  stackoverflow.com/base64 decode snippet in c++ - Stack Overflow.html
+    pngData.dataLen = data.size();
+    pngData.data = reinterpret_cast<unsigned char *>(data.data());
+    pngData.val = 0;
+    pngData.valB = -8;
+    pngData.decodePos = dataPNG.size();
 
     cairo_read_func_t fn = [](void *closure, unsigned char *data,
                               unsigned int length) -> cairo_status_t {
+      static const uint8_t lookup[] = {
+          62,  255, 62,  255, 63,  52,  53, 54, 55, 56, 57, 58, 59, 60, 61, 255,
+          255, 0,   255, 255, 255, 255, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
+          10,  11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+          255, 255, 255, 255, 63,  255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+          36,  37,  38,  39,  40,  41,  42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
+      static_assert(sizeof(lookup) == 'z' - '+' + 1);
       readInfo *p = reinterpret_cast<readInfo *>(closure);
 
-      // requesting more than the size?
-      if (length > (p->bufferLen - p->bufferPos))
-        return CAIRO_STATUS_READ_ERROR;
+      size_t bytesDecoded = 0;
+      while (bytesDecoded < length) {
 
-      memcpy(data, p->data + p->bufferPos, length);
-      p->bufferPos += length;
+        // requesting more than the size?
+        if (p->decodePos > p->dataLen)
+          return CAIRO_STATUS_READ_ERROR;
+
+        uint8_t c = p->data[p->decodePos];
+
+        if (c < '+' || c > 'z')
+          return CAIRO_STATUS_READ_ERROR;
+
+        c -= '+';
+        if (lookup[c] >= 64)
+          return CAIRO_STATUS_READ_ERROR;
+
+        p->val = (p->val << 6) + lookup[c];
+        p->valB += 6;
+        if (p->valB >= 0) {
+          *data = static_cast<unsigned char>((p->val >> p->valB) & 0xFF);
+          data++;
+          bytesDecoded++;
+          p->valB -= 8;
+        }
+
+        p->decodePos++;
+      }
 
       return CAIRO_STATUS_SUCCESS;
     };
@@ -2608,9 +2603,9 @@ void uxdevice::platform::IMAGE::invoke(DisplayUnitContext &context) {
     throw std::runtime_error(sError.str());
   }
 
-  image = readImage(_data, context.AREA()->w, context.AREA()->h);
+  _image = readImage(_data, context.AREA().w, context.AREA().h);
 
-  if (image)
+  if (_image)
     bLoaded = true;
 }
 

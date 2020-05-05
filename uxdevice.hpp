@@ -1,7 +1,7 @@
 /**
 \author Anthony Matarazzo
 \file uxdevice.hpp
-\date 11/19/19
+\date 3/26/20
 \version 1.0
 \brief interface for the platform.
 
@@ -49,6 +49,7 @@ typedef unsigned char u_int8_t;
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <thread>
 #include <future>
 #include <iomanip>
 #include <iostream>
@@ -129,6 +130,7 @@ class event;
 events that can be dispatched by the system.
 */
 enum class eventType : uint8_t {
+  none,
   paint,
   focus,
   blur,
@@ -161,70 +163,45 @@ given within the parameters.
 */
 using event = class event {
 public:
-  event(const eventType &et) {
-    evtType = et;
-    bVirtualKey = false;
-  }
-  event(const eventType &et, const char &k) {
-    evtType = et;
-    key = k;
-    bVirtualKey = false;
-  }
-  event(const eventType &et, const unsigned int &vk) {
-    evtType = et;
-    virtualKey = vk;
-    bVirtualKey = true;
-  }
+  event(const eventType &et) : type(et) {}
+  event(const eventType &et, const char &k) : type(et), key(k) {}
+  event(const eventType &et, const unsigned int &vk)
+      : type(et), virtualKey(vk), isVirtualKey(true) {}
 
   event(const eventType &et, const short &mx, const short &my,
-        const short &mb_dis) {
-    evtType = et;
-    mousex = mx;
-    mousey = my;
-    if (et == eventType::wheel)
-      wheelDistance = mb_dis;
-    else
-      mouseButton = static_cast<char>(mb_dis);
-    bVirtualKey = false;
-  }
-  event(const eventType &et, const short &w, const short &h) {
-    evtType = et;
-    width = w;
-    height = h;
-    mousex = w;
-    mousey = h;
-    bVirtualKey = false;
-  }
+        const short &mb_dis)
+      : type(et), x(mx), y(my) {
 
-  event(const eventType &et, const short &_x, const short &_y, const short &w,
-        const short &h) {
-    evtType = et;
-    x = _x;
-    y = _y;
-    width = w;
-    height = h;
-    bVirtualKey = false;
+    if (et == eventType::wheel)
+      distance = mb_dis;
+    else
+      button = static_cast<char>(mb_dis);
   }
-  event(const eventType &et, const short &distance) {
-    evtType = et;
-    wheelDistance = distance;
-    bVirtualKey = false;
-  }
+  event(const eventType &et, const short &_w, const short &_h)
+      : type(et), x(_w), y(_h), w(_w), h(_h) {}
+
+  event(const eventType &et, const short &_x, const short &_y, const short &_w,
+        const short &_h)
+      : type(et), x(_x), y(_y), w(_w), h(_h) {}
+  event(const eventType &et, const short &_distance)
+      : type(et), distance(_distance) {}
   ~event(){};
 
 public:
-  eventType evtType;
-  bool bVirtualKey;
-  char key;
-  unsigned int virtualKey;
-  std::wstring unicodeKeys;
-  short mousex;
-  short mousey;
-  char mouseButton;
-  short width;
-  short height;
-  short wheelDistance;
-  short x, y;
+  eventType type = eventType::none;
+
+  unsigned int virtualKey = 0;
+  std::wstring unicodeKeys = L"";
+  bool isVirtualKey = false;
+  char key = 0x00;
+
+  char button = 0;
+
+  short x = 0;
+  short y = 0;
+  short w = 0;
+  short h = 0;
+  short distance = 0;
 };
 
 /**
@@ -271,7 +248,7 @@ enum class lineJoin {
   round = CAIRO_LINE_JOIN_ROUND,
   bevel = CAIRO_LINE_JOIN_BEVEL
 };
-enum class areaType { none, circle, ellipse, rectangle, roundedRectangle };
+using areaType = enum class areaType { none, circle, ellipse, rectangle, roundedRectangle };
 
 enum op_t {
   opClear = CAIRO_OPERATOR_CLEAR,
@@ -335,6 +312,7 @@ public:
 using Matrix = class Matrix {
 public:
   Matrix() { cairo_matrix_init_identity(&_matrix); }
+  virtual ~Matrix() {}
   void initIdentity(void) { cairo_matrix_init_identity(&_matrix); };
   void initTranslate(double tx, double ty) {
     cairo_matrix_init_translate(&_matrix, tx, ty);
@@ -368,7 +346,7 @@ public:
     x = _y;
     y = _y;
   }
-  cairo_matrix_t _matrix;
+  cairo_matrix_t _matrix = {0, 0, 0, 0, 0, 0};
 };
 
 /**
@@ -416,8 +394,8 @@ public:
   Paint(double x0, double y0, double x1, double y1, const ColorStops &_cs);
   Paint(double cx0, double cy0, double radius0, double cx1, double cy1,
         double radius1, const ColorStops &cs);
-
-  Paint(const Paint &other) {
+  Paint(const Paint &other) { *this = other; }
+  Paint &operator=(const Paint &other) {
     _type = other._type;
     _description = other._description;
 
@@ -443,9 +421,10 @@ public:
 
     _pangoColor = other._pangoColor;
     _bLoaded = other._bLoaded;
+    return *this;
   }
+  virtual ~Paint();
 
-  ~Paint();
   void emit(cairo_t *cr);
   void emit(cairo_t *cr, double x, double y, double w, double h);
   void filter(filterType ft) {
@@ -467,7 +446,7 @@ private:
 private:
   double _r = 0.0, _g = 0.0, _b = 0.0, _a = 1.0;
   paintType _type = paintType::none;
-  std::string _description;
+  std::string _description = "";
 
   gradientType _gradientType = gradientType::none;
 
@@ -476,7 +455,7 @@ private:
 
   // radial gradient pattern space coordinates
   double _cx0 = 0, _cy0 = 0, _radius0 = 0, _cx1 = 0, _cy1 = 0, _radius1 = 0;
-  ColorStops _stops;
+  ColorStops _stops = {};
 
   filterType _filter = filterType::fast;
   extendType _extend = extendType::repeat;
@@ -485,7 +464,7 @@ private:
 
   cairo_pattern_t *_pattern = nullptr;
   cairo_surface_t *_image = nullptr;
-  PangoColor _pangoColor;
+  PangoColor _pangoColor = {0, 0, 0};
   bool _bLoaded = false;
 };
 
@@ -660,7 +639,7 @@ public:
 
   static cairo_surface_t *readImage(std::string &data, double w = -1,
                                     double h = -1);
-  static void blurImage(cairo_surface_t *img, int radius);
+  static void blurImage(cairo_surface_t *img, unsigned int radius);
   static cairo_status_t read_contents(const gchar *file_name, guint8 **contents,
                                       gsize *length);
 
@@ -791,6 +770,10 @@ private:
           bProvidedSize(false), bProvidedDescription(true) {}
     FONT(const std::string &s, const double &pt)
         : description(s), pointSize(pt) {}
+
+    FONT &operator=(const FONT &other) = delete;
+    FONT(const FONT &);
+
     ~FONT() {
       if (fontDescription)
         pango_font_description_free(fontDescription);
@@ -957,6 +940,8 @@ private:
     DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
     DRAWTEXT(std::size_t _b, std::size_t _e)
         : beginIndex(_b), endIndex(_e), bEntire(false) {}
+    DRAWTEXT(const DRAWTEXT &other) = delete;
+    DRAWTEXT &operator=(const DRAWTEXT &other) = delete;
     ~DRAWTEXT() {
       if (textImage)
         cairo_surface_destroy(textImage);
@@ -984,7 +969,7 @@ private:
     void invoke(DisplayUnitContext &context);
 
   private:
-    AREA src;
+    AREA src = AREA();
     bool bEntire = true;
   };
 
@@ -1014,28 +999,34 @@ private:
   public:
     VIRTUAL_INDEX(IMAGE);
     IMAGE(const std::string &data) : _data(data) {}
-    ~IMAGE() {
-      if (image)
-        cairo_surface_destroy(image);
+    IMAGE(const IMAGE &other) { *this = other; }
+    IMAGE &operator=(const IMAGE &other) {
+      _image = cairo_surface_reference(other._image);
+      return *this;
     }
-    cairo_surface_t *image = nullptr;
+    ~IMAGE() {
+      if (_image)
+        cairo_surface_destroy(_image);
+    }
+
     void invoke(DisplayUnitContext &context);
-    std::string _data;
+    cairo_surface_t *_image = nullptr;
+    std::string _data = "";
     bool bIsSVG = false;
     bool bLoaded = false;
   };
 
   class DisplayUnitContext {
   public:
-    std::array<DisplayUnit *, contextUnitIndex::MAX_idx> currentUnit;
+    typedef std::array<DisplayUnit *, contextUnitIndex::MAX_idx> contextArray;
+    contextArray currentUnit;
 
-    DisplayUnitContext(void) {
-      std::fill(currentUnit.begin(), currentUnit.end(), nullptr);
+    DisplayUnitContext(void) : currentUnit(contextArray()) {
     }
 
 #define INDEXED_ACCESSOR(NAME)                                                 \
-  inline platform::NAME *NAME(void) const {                                    \
-    return dynamic_cast<platform::NAME *>(                                     \
+  inline platform::NAME &NAME(void) const {                                    \
+    return *dynamic_cast<platform::NAME *>(                                    \
         currentUnit[contextUnitIndex::NAME##_idx]);                            \
   }                                                                            \
   inline bool validate##NAME(void) const {                                     \
@@ -1101,28 +1092,28 @@ private:
 #endif
   };
 
-  DisplayUnitContext context;
+  DisplayUnitContext context = DisplayUnitContext();
 
 private:
-  errorHandler fnError;
-  eventHandler fnEvents;
-  std::vector<std::unique_ptr<DisplayUnit>> DL;
+  errorHandler fnError = nullptr;
+  eventHandler fnEvents = nullptr;
+  std::vector<std::unique_ptr<DisplayUnit>> DL = {};
 
-  std::vector<eventHandler> onfocus;
-  std::vector<eventHandler> onblur;
-  std::vector<eventHandler> onresize;
-  std::vector<eventHandler> onkeydown;
-  std::vector<eventHandler> onkeyup;
-  std::vector<eventHandler> onkeypress;
-  std::vector<eventHandler> onmouseenter;
-  std::vector<eventHandler> onmouseleave;
-  std::vector<eventHandler> onmousemove;
-  std::vector<eventHandler> onmousedown;
-  std::vector<eventHandler> onmouseup;
-  std::vector<eventHandler> onclick;
-  std::vector<eventHandler> ondblclick;
-  std::vector<eventHandler> oncontextmenu;
-  std::vector<eventHandler> onwheel;
+  std::vector<eventHandler> onfocus = {};
+  std::vector<eventHandler> onblur = {};
+  std::vector<eventHandler> onresize = {};
+  std::vector<eventHandler> onkeydown = {};
+  std::vector<eventHandler> onkeyup = {};
+  std::vector<eventHandler> onkeypress = {};
+  std::vector<eventHandler> onmouseenter = {};
+  std::vector<eventHandler> onmouseleave = {};
+  std::vector<eventHandler> onmousemove = {};
+  std::vector<eventHandler> onmousedown = {};
+  std::vector<eventHandler> onmouseup = {};
+  std::vector<eventHandler> onclick = {};
+  std::vector<eventHandler> ondblclick = {};
+  std::vector<eventHandler> oncontextmenu = {};
+  std::vector<eventHandler> onwheel = {};
 
   std::vector<eventHandler> &getEventVector(eventType evtType);
 }; // namespace uxdevice

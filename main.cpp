@@ -260,12 +260,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.image("/home/anthony/development/platform/button.svg");
   vis.drawImage();
 
+  // inline image
   vis.area(215, 300, 200, 220);
-
   vis.image(stripes);
-
   vis.drawImage();
 
+  // inline SVG
   vis.area(05, 0, 800, 620);
   vis.image(sSVG);
   vis.drawImage();
@@ -326,7 +326,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   // draw text
   vis.font("DejaVu Sans Bold 44");
-  vis.textShadow("black", 5, 2, 2);
+  vis.textShadow("red", 5, 2, 2);
 
   vis.save();
   vis.translate(0, 400);
@@ -344,6 +344,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.drawText();
   vis.restore();
 
+  vis.font("DejaVu Sans Bold 44");
   vis.area(300, 400, 300, 300);
   vis.text("Text Textured");
   // use base 64 string as texture fill
