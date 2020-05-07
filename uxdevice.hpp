@@ -1081,7 +1081,6 @@ private:
     unsigned short windowHeight = 0;
     bool windowOpen = false;
     cairo_t *cr = nullptr;
-    cairo_surface_t *offScreen = nullptr;
     std::mutex surface_mutex = std::mutex();
 
 #if defined(__linux__)

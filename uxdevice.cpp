@@ -44,16 +44,6 @@ void uxdevice::platform::renderLoop(void) {
         // only items that are on screen are processed.
         processRendering();
 
-        // update the areas needed from the off screen buffer
-        cairo_t *cr = cairo_create(context.xcbSurface);
-        cairo_push_group(cr);
-
-        for (auto n : dirtyRectangles)
-          copyRectangle(cr, n);
-
-        cairo_pop_group_to_source(cr);
-        cairo_paint(cr);
-        cairo_destroy(cr);
 
         xcb_flush(context.connection);
 
@@ -84,6 +74,8 @@ void uxdevice::platform::processRendering(void) {
   if (dirtyRectangles.size() == 0 && !bRenderWork)
     return;
 
+  cairo_push_group(context.cr);
+
   if (context.preclear) {
     cairo_set_source_rgb(context.cr, 1.0, 1.0, 1.0);
     cairo_paint(context.cr);
@@ -108,24 +100,15 @@ void uxdevice::platform::processRendering(void) {
              << cairo_status_to_string(status);
       throw std::runtime_error(sError.str());
     }
-    if (n->renderWork())
-      postDirty_RenderInternal(context.AREA().x, context.AREA().y,
-                                 context.AREA().w, context.AREA().h);
+
   }
+
+  cairo_pop_group_to_source(context.cr);
+  cairo_paint(context.cr);
+
   bRenderWork = false;
 }
 
-/**
-\internal
-\brief The routine copys a rectangle from offscreen to
-surface.
-*/
-void uxdevice::platform::copyRectangle(cairo_t *cr, const bounds &_area) {
-
-  cairo_rectangle(cr, _area.x, _area.y, _area.w, _area.h);
-  cairo_set_source_surface(cr, context.offScreen, 0, 0);
-  cairo_fill(cr);
-}
 
 /**
 \internal
@@ -454,19 +437,9 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
     throw std::runtime_error(sError.str());
   }
 
-  // create the off screen image buffer
-  cairo_format_t format = CAIRO_FORMAT_ARGB32;
-  context.offScreen = cairo_image_surface_create(format, context.windowWidth,
-                                                 context.windowHeight);
-  if (!context.offScreen) {
-    closeWindow();
-    std::stringstream sError;
-    sError << "ERR_CAIRO "
-           << "  " << __FILE__ << " " << __func__;
-    throw std::runtime_error(sError.str());
-  }
+
   // create cairo context
-  context.cr = cairo_create(context.offScreen);
+  context.cr = cairo_create(context.xcbSurface);
   if (!context.cr) {
     closeWindow();
     std::stringstream sError;
@@ -2832,21 +2805,6 @@ void uxdevice::platform::resize(const int w, const int h) {
     if (context.windowWidth == w && context.windowHeight == h)
       return;
     std::lock_guard<std::mutex> lockSurface(context.surface_mutex);
-
-    // copy old surface to new one.
-    cairo_format_t format = CAIRO_FORMAT_ARGB32;
-    cairo_surface_t *newSurface = cairo_image_surface_create(format, w, h);
-
-    cairo_t *cr = cairo_create(newSurface);
-    cairo_rectangle(cr, 0, 0, context.windowWidth, context.windowHeight);
-    cairo_set_source_surface(cr, context.offScreen, 0, 0);
-    cairo_fill(cr);
-    cairo_surface_destroy(context.offScreen);
-
-    context.offScreen = newSurface;
-    // create cairo context
-    cairo_destroy(context.cr);
-    context.cr = cairo_create(context.offScreen);
 
     cairo_xcb_surface_set_size(context.xcbSurface, w, h);
     context.preclear = true;
