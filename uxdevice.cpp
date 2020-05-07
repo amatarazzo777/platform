@@ -20,32 +20,76 @@ using namespace uxdevice;
 
 /**
 \internal
-\brief The routine iterates the display list moving
-parameters to the class member communication areas.
-If processing is requested, the function operation
-is
-invoked.
+\brief The routine is the main rendering thread. The thread runs
+at specific intervals. Locks are placed on the surface and
+rectangle list. The surface may change due to user resizing.
+
 */
-void uxdevice::platform::render(const event &evt) {
-  static size_t count = 0;
+void uxdevice::platform::renderLoop(void) {
+  while (bProcessing) {
 
-  count++;
+    // measure processing time
+    static std::chrono::system_clock::time_point lastTime =
+        std::chrono::high_resolution_clock::now();
+    std::chrono::system_clock::time_point start =
+        std::chrono::high_resolution_clock::now();
 
-  static std::chrono::system_clock::time_point lastTime =
-      std::chrono::high_resolution_clock::now();
-  std::chrono::system_clock::time_point start =
-      std::chrono::high_resolution_clock::now();
+    {
+      std::lock_guard<std::mutex> lockSurface(context.surface_mutex);
+      if (context.xcbSurface) {
 
-  double dx = evt.x;
-  double dy = evt.y;
-  double dw = evt.w;
-  double dh = evt.h;
+        std::lock_guard<std::mutex> lock(dirtyRectangles_mutex);
 
-  cairo_push_group(context.cr);
+        // the process rendering creates the graphic output buffer off screen.
+        // only items that are on screen are processed.
+        processRendering();
+
+        // update the areas needed from the off screen buffer
+        cairo_t *cr = cairo_create(context.xcbSurface);
+        cairo_push_group(cr);
+
+        for (auto n : dirtyRectangles)
+          copyRectangle(cr, n);
+
+        cairo_pop_group_to_source(cr);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+
+        xcb_flush(context.connection);
+
+        // all work has been accomplished, clear the dirty list.
+        dirtyRectangles.clear();
+      }
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> diff = end - start;
+    cout << diff.count() << std::endl << std::flush;
+
+    lastTime = std::chrono::high_resolution_clock::now();
+    size_t sleepAmount = 1000 / framesPerSecond;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleepAmount));
+  }
+}
+
+/**
+\internal
+\brief The routine checks the display list for work.
+If any items are on screen, it is rendered to an offscreen image.
+*/
+void uxdevice::platform::processRendering(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
+
+  // need to add clip logic using the cairo
+  if (dirtyRectangles.size() == 0 && !bRenderWork)
+    return;
+
   if (context.preclear) {
     cairo_set_source_rgb(context.cr, 1.0, 1.0, 1.0);
     cairo_paint(context.cr);
     context.preclear = false;
+    dirtyRectangles.push_back(
+        {0, 0, (double)context.windowWidth, (double)context.windowHeight});
   }
 
   for (auto &n : DL) {
@@ -64,33 +108,38 @@ void uxdevice::platform::render(const event &evt) {
              << cairo_status_to_string(status);
       throw std::runtime_error(sError.str());
     }
+    if (n->renderWork())
+      postDirty_RenderInternal(context.AREA().x, context.AREA().y,
+                                 context.AREA().w, context.AREA().h);
   }
-
-  dx = 0;
-  dy = 0;
-  dw = context.windowWidth;
-
-  dh = context.windowHeight;
-
-  cairo_pop_group_to_source(context.cr);
-  cairo_paint(context.cr);
-
-  cairo_surface_flush(context.xcbSurface);
-  xcb_flush(context.connection);
-
-  auto end = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::milli> diff = end - start;
-
-  lastTime = std::chrono::high_resolution_clock::now();
-  cout << diff.count() << endl << flush;
+  bRenderWork = false;
 }
 
 /**
 \internal
-\brief a simple test of the pointer and shared memory .
+\brief The routine copys a rectangle from offscreen to
+surface.
 */
-// change data on mouse move
-void uxdevice::platform::test(int x, int y) {}
+void uxdevice::platform::copyRectangle(cairo_t *cr, const bounds &_area) {
+
+  cairo_rectangle(cr, _area.x, _area.y, _area.w, _area.h);
+  cairo_set_source_surface(cr, context.offScreen, 0, 0);
+  cairo_fill(cr);
+}
+
+/**
+\internal
+\brief The routine posts a direct rectangle to the vector
+*/
+void uxdevice::platform::postDirty(double x, double y, double w, double h) {
+  std::lock_guard<std::mutex> lock(dirtyRectangles_mutex);
+  postDirty_RenderInternal(x,y,w,h);
+}
+
+void uxdevice::platform::postDirty_RenderInternal(double x, double y, double w, double h) {
+  dirtyRectangles.push_back(bounds{x, y, w, h});
+}
+
 
 /*
 \brief the dispatch routine is invoked by the messageLoop.
@@ -105,7 +154,7 @@ void uxdevice::platform::dispatchEvent(const event &evt) {
   case eventType::none:
     break;
   case eventType::paint: {
-    render(evt);
+    postDirty(evt.x, evt.y, evt.w, evt.h);
   } break;
   case eventType::resize:
     resize(evt.w, evt.h);
@@ -156,11 +205,24 @@ programs as vlc, the routine simply places pixels into the memory
 buffer. while on windows the direct x library is used in combination
 with windows message queue processing.
 */
-void uxdevice::platform::processEvents(void) {
+void uxdevice::platform::startProcessing(int _fps) {
   // setup the event dispatcher
   eventHandler ev = std::bind(&uxdevice::platform::dispatchEvent, this,
                               std::placeholders::_1);
-  messageLoop();
+  framesPerSecond = _fps;
+
+  std::thread thrRenderer([=]() {
+    bProcessing = true;
+    renderLoop();
+  });
+
+  std::thread thrMessageQueue([=]() {
+    bProcessing = true;
+    messageLoop();
+  });
+
+  thrRenderer.detach();
+  thrMessageQueue.detach();
 }
 
 /**
@@ -209,7 +271,7 @@ size_t getAddress(std::function<T(U...)> f) {
 #if 0
 /**
 
-\brief The function is invoked when an event occurrs. Normally this occurs
+\brief The function is invoked when an event occurs. Normally this occurs
 from the platform device. However, this may be invoked by the soft
 generation of events.
 
@@ -250,6 +312,8 @@ uxdevice::platform::platform(const eventHandler &evtDispatcher,
   and frees resources.
 */
 uxdevice::platform::~platform() {
+  std::lock_guard<std::mutex> lockSurface(context.surface_mutex);
+  closeWindow();
 
 #if defined(__linux__)
 
@@ -266,6 +330,7 @@ uxdevice::platform::~platform() {
 void uxdevice::platform::openWindow(const std::string &sWindowTitle,
                                     const unsigned short width,
                                     const unsigned short height) {
+  std::lock_guard<std::mutex> lockSurface(context.surface_mutex);
   context.windowWidth = width;
   context.windowHeight = height;
 
@@ -377,7 +442,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
       }
     }
   }
-
+  // create xcb surface
   context.xcbSurface = cairo_xcb_surface_create(
       context.connection, context.window, context.visualType,
       context.windowWidth, context.windowHeight);
@@ -389,7 +454,19 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
     throw std::runtime_error(sError.str());
   }
 
-  context.cr = cairo_create(context.xcbSurface);
+  // create the off screen image buffer
+  cairo_format_t format = CAIRO_FORMAT_ARGB32;
+  context.offScreen = cairo_image_surface_create(format, context.windowWidth,
+                                                 context.windowHeight);
+  if (!context.offScreen) {
+    closeWindow();
+    std::stringstream sError;
+    sError << "ERR_CAIRO "
+           << "  " << __FILE__ << " " << __func__;
+    throw std::runtime_error(sError.str());
+  }
+  // create cairo context
+  context.cr = cairo_create(context.offScreen);
   if (!context.cr) {
     closeWindow();
     std::stringstream sError;
@@ -404,7 +481,8 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
   context.windowOpen = true;
 
   context.preclear = true;
-  render(event{eventType::paint, 0, 0});
+  postDirty(0, 0, context.windowWidth, context.windowHeight);
+
   cairo_surface_flush(context.xcbSurface);
 
   return;
@@ -669,7 +747,28 @@ void uxdevice::platform::messageLoop(void) {
   short int newHeight;
   bool bRequestResize = false;
 
-  while ((xcbEvent = xcb_wait_for_event(context.connection))) {
+  // is window open?
+  while (bProcessing && !context.connection)
+      std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  if(!context.connection)
+    return;
+
+  // setup close window event
+  xcb_intern_atom_cookie_t cookie =
+      xcb_intern_atom(context.connection, 1, 12, "WM_PROTOCOLS");
+  xcb_intern_atom_reply_t *reply =
+      xcb_intern_atom_reply(context.connection, cookie, 0);
+
+  xcb_intern_atom_cookie_t cookie2 =
+      xcb_intern_atom(context.connection, 0, 16, "WM_DELETE_WINDOW");
+  xcb_intern_atom_reply_t *reply2 =
+      xcb_intern_atom_reply(context.connection, cookie2, 0);
+
+  xcb_change_property(context.connection, XCB_PROP_MODE_REPLACE, context.window,
+                      (*reply).atom, 4, 32, 1, &(*reply2).atom);
+
+  // process Message queue
+  while (bProcessing && (xcbEvent = xcb_wait_for_event(context.connection))) {
     switch (xcbEvent->response_type & ~0x80) {
     case XCB_MOTION_NOTIFY: {
       xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)xcbEvent;
@@ -746,6 +845,12 @@ void uxdevice::platform::messageLoop(void) {
         }
       }
     }
+    case XCB_CLIENT_MESSAGE: {
+      if ((*(xcb_client_message_event_t *)xcbEvent).data.data32[0] ==
+          (*reply2).atom) {
+        bProcessing = false;
+      }
+    }
     }
     free(xcbEvent);
   }
@@ -766,9 +871,15 @@ void uxdevice::platform::messageLoop(void) {
 /**
 \brief clears the display list
 */
-void uxdevice::platform::clear(void) { DL.clear(); }
+void uxdevice::platform::clear(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
+  DL.clear();
+  context.currentUnit = DisplayUnitContext::contextArray();
+  context.preclear = true;
+}
 
 void uxdevice::platform::antiAlias(antialias antialias) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<ANTIALIAS>(antialias));
 }
 
@@ -776,82 +887,101 @@ void uxdevice::platform::antiAlias(antialias antialias) {
 \brief sets the text
 */
 void uxdevice::platform::text(const std::string &s) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<STRING>(s));
 }
 /**
 \brief
 */
 void uxdevice::platform::text(const std::stringstream &s) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<STRING>(s.str()));
 }
 /**
 \brief
 */
 void uxdevice::platform::image(const std::string &s) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<IMAGE>(s));
 }
 /**
 \brief
 */
 void uxdevice::platform::pen(const Paint &p) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(p));
 }
-void uxdevice::platform::pen(u_int32_t c) { DL.push_back(make_unique<PEN>(c)); }
+void uxdevice::platform::pen(u_int32_t c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
+  DL.push_back(make_unique<PEN>(c));
+}
+
 void uxdevice::platform::pen(const string &c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(c));
 }
 void uxdevice::platform::pen(const std::string &c, double w, double h) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(c, w, h));
 }
 
 void uxdevice::platform::pen(double _r, double _g, double _b) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(_r, _g, _b));
 }
 void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(_r, _g, _b, _a));
 }
 void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
                              const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(x0, y0, x1, y1, cs));
 }
 void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
                              double cy1, double radius1, const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
 }
 
 /**
 \brief
 */
-/**
-\brief
-*/
 void uxdevice::platform::background(const Paint &p) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(p));
 }
 void uxdevice::platform::background(u_int32_t c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(c));
 }
 void uxdevice::platform::background(const string &c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(c));
 }
 void uxdevice::platform::background(const std::string &c, double w, double h) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(c, w, h));
 }
 
 void uxdevice::platform::background(double _r, double _g, double _b) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b));
 }
 void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b, _a));
 }
 void uxdevice::platform::background(double x0, double y0, double x1, double y1,
                                     const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<BACKGROUND>(x0, y0, x1, y1, cs));
 }
 void uxdevice::platform::background(double cx0, double cy0, double radius0,
                                     double cx1, double cy1, double radius1,
                                     const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(
       make_unique<BACKGROUND>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
 }
@@ -859,6 +989,7 @@ void uxdevice::platform::background(double cx0, double cy0, double radius0,
 \brief
 */
 void uxdevice::platform::textAlignment(alignment aln) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<ALIGN>(aln));
 }
 
@@ -866,19 +997,23 @@ void uxdevice::platform::textAlignment(alignment aln) {
 \brief
 */
 void uxdevice::platform::textOutline(const Paint &p, double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(p, dWidth));
 }
 void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
 }
 /**
 \brief
 */
 void uxdevice::platform::textOutline(const string &c, double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
 }
 void uxdevice::platform::textOutline(const std::string &c, double w, double h,
                                      double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(c, w, h, dWidth));
 }
 /**
@@ -886,6 +1021,7 @@ void uxdevice::platform::textOutline(const std::string &c, double w, double h,
 */
 void uxdevice::platform::textOutline(double _r, double _g, double _b,
                                      double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, dWidth));
 }
 /**
@@ -893,16 +1029,19 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b,
 */
 void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
                                      double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
 }
 void uxdevice::platform::textOutline(double x0, double y0, double x1, double y1,
                                      const ColorStops &cs, double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
 }
 
 void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
                                      double cx1, double cy1, double radius1,
                                      const ColorStops &cs, double dWidth) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTOUTLINE>(cx0, cy0, radius0, cx1, cy1, radius1,
                                         cs, dWidth));
 }
@@ -911,34 +1050,43 @@ void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
 \brief clears the current text outline from the context.
 */
 void uxdevice::platform::textOutlineNone(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTOUTLINE)));
 }
 
 void uxdevice::platform::textFill(const Paint &p) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(p));
 }
 void uxdevice::platform::textFill(u_int32_t c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(c));
 }
 void uxdevice::platform::textFill(const string &c) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(c));
 }
 void uxdevice::platform::textFill(const string &c, double w, double h) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(c, w, h));
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b));
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b, _a));
 }
 void uxdevice::platform::textFill(double x0, double y0, double x1, double y1,
                                   const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(x0, y0, x1, y1, cs));
 }
 void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
                                   double cx1, double cy1, double radius1,
                                   const ColorStops &cs) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
 }
 
@@ -946,6 +1094,7 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
 \brief clears the current text fill from the context.
 */
 void uxdevice::platform::textFillNone(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTFILL)));
 }
 /**
@@ -953,10 +1102,12 @@ void uxdevice::platform::textFillNone(void) {
 */
 void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
                                     double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(p, r, xOffset, yOffset));
 }
 void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
                                     double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
 }
 /**
@@ -964,10 +1115,12 @@ void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
 */
 void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
                                     double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
 }
 void uxdevice::platform::textShadow(const std::string &c, double w, double h,
                                     int r, double xOffset, double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
 }
 
@@ -976,6 +1129,7 @@ void uxdevice::platform::textShadow(const std::string &c, double w, double h,
 */
 void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
                                     double xOffset, double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
 }
 /**
@@ -983,12 +1137,14 @@ void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
 */
 void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
                                     int r, double xOffset, double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
 }
 
 void uxdevice::platform::textShadow(double x0, double y0, double x1, double y1,
                                     const ColorStops &cs, int r, double xOffset,
                                     double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(
       make_unique<TEXTSHADOW>(x0, y0, x1, y1, cs, r, xOffset, yOffset));
 }
@@ -997,6 +1153,7 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
                                     double cx1, double cy1, double radius1,
                                     const ColorStops &cs, int r, double xOffset,
                                     double yOffset) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<TEXTSHADOW>(cx0, cy0, radius0, cx1, cy1, radius1, cs,
                                        r, xOffset, yOffset));
 }
@@ -1005,6 +1162,7 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
 \brief clears the current text fill from the context.
 */
 void uxdevice::platform::textShadowNone(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<CLEAROPTION>(IDX(TEXTSHADOW)));
 }
 
@@ -1012,23 +1170,28 @@ void uxdevice::platform::textShadowNone(void) {
 \brief
 */
 void uxdevice::platform::font(const std::string &s) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<FONT>(s));
 }
 /**
 \brief
 */
 void uxdevice::platform::area(double x, double y, double w, double h) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<AREA>(areaType::rectangle, x, y, w, h));
 }
 void uxdevice::platform::area(double x, double y, double w, double h, double rx,
                               double ry) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<AREA>(x, y, w, h, rx, ry));
 }
 void uxdevice::platform::areaCircle(double x, double y, double d) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<AREA>(x, y, d / 2));
 }
 void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
                                      double ry) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<AREA>(areaType::ellipse, cx, cy, rx, ry));
 }
 
@@ -1036,19 +1199,37 @@ void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
 \brief
 */
 void uxdevice::platform::drawText(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<DRAWTEXT>());
+  bRenderWork = true;
+#if 0
+  std::lock_guard<std::mutex> lk(RenderWork_mutex);
+  bRenderWork_condition.notify_all();
+#endif // 0
 }
 /**
 \brief
 */
 void uxdevice::platform::drawImage(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<DRAWIMAGE>());
+  bRenderWork = true;
+#if 0
+  std::lock_guard<std::mutex> lk(RenderWork_mutex);
+  bRenderWork_condition.notify_all();
+#endif // 0
 }
 /**
 \brief
 */
 void uxdevice::platform::drawArea(void) {
+  std::lock_guard<std::mutex> lock(DL_mutex);
   DL.push_back(make_unique<DRAWAREA>());
+  bRenderWork = true;
+#if 0
+  std::lock_guard<std::mutex> lk(RenderWork_mutex);
+  bRenderWork_condition.notify_all();
+#endif
 }
 
 /**
@@ -1392,6 +1573,7 @@ void uxdevice::Paint::emit(cairo_t *cr, double x, double y, double w,
 */
 void uxdevice::platform::save(void) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_save, _1);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1400,12 +1582,14 @@ void uxdevice::platform::save(void) {
 */
 void uxdevice::platform::restore(void) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_restore, _1);
   DL.push_back(make_unique<FUNCTION>(func));
 }
 
 void uxdevice::platform::push(content c) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (c == content::all) {
     func = std::bind(cairo_push_group, _1);
@@ -1418,6 +1602,7 @@ void uxdevice::platform::push(content c) {
 
 void uxdevice::platform::pop(bool bToSource) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bToSource) {
     func = std::bind(cairo_pop_group_to_source, _1);
@@ -1432,6 +1617,7 @@ void uxdevice::platform::pop(bool bToSource) {
 */
 void uxdevice::platform::translate(double x, double y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_translate, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1440,6 +1626,7 @@ void uxdevice::platform::translate(double x, double y) {
 */
 void uxdevice::platform::rotate(double angle) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_rotate, _1, angle);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1448,6 +1635,7 @@ void uxdevice::platform::rotate(double angle) {
 */
 void uxdevice::platform::scale(double x, double y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_scale, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1456,6 +1644,7 @@ void uxdevice::platform::scale(double x, double y) {
 */
 void uxdevice::platform::transform(const Matrix &m) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1464,6 +1653,7 @@ void uxdevice::platform::transform(const Matrix &m) {
 */
 void uxdevice::platform::matrix(const Matrix &m) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1472,6 +1662,7 @@ void uxdevice::platform::matrix(const Matrix &m) {
 */
 void uxdevice::platform::identity(void) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_identity_matrix, _1);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1481,6 +1672,7 @@ void uxdevice::platform::identity(void) {
 */
 void uxdevice::platform::device(double &x, double &y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   auto fn = [](cairo_t *cr, double &x, double &y) {
     double _x = x;
     double _y = y;
@@ -1497,6 +1689,7 @@ void uxdevice::platform::device(double &x, double &y) {
 */
 void uxdevice::platform::deviceDistance(double &x, double &y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   auto fn = [](cairo_t *cr, double &x, double &y) {
     double _x = x;
     double _y = y;
@@ -1513,6 +1706,7 @@ void uxdevice::platform::deviceDistance(double &x, double &y) {
 */
 void uxdevice::platform::user(double &x, double &y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   auto fn = [](cairo_t *cr, double &x, double &y) {
     double _x = x, _y = y;
     cairo_device_to_user(cr, &_x, &_y);
@@ -1529,6 +1723,7 @@ void uxdevice::platform::user(double &x, double &y) {
 */
 void uxdevice::platform::userDistance(double &x, double &y) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   auto fn = [](cairo_t *cr, double &x, double &y) {
     double _x = x, _y = y;
     cairo_device_to_user_distance(cr, &_x, &_y);
@@ -1545,6 +1740,7 @@ void uxdevice::platform::userDistance(double &x, double &y) {
 */
 void uxdevice::platform::cap(lineCap c) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func =
       std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1555,6 +1751,7 @@ void uxdevice::platform::cap(lineCap c) {
 */
 void uxdevice::platform::join(lineJoin j) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func =
       std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1565,6 +1762,7 @@ void uxdevice::platform::join(lineJoin j) {
 */
 void uxdevice::platform::lineWidth(double dWidth) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1574,6 +1772,7 @@ void uxdevice::platform::lineWidth(double dWidth) {
 */
 void uxdevice::platform::miterLimit(double dLimit) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1584,6 +1783,7 @@ void uxdevice::platform::miterLimit(double dLimit) {
 void uxdevice::platform::dashes(const std::vector<double> &dashes,
                                 double offset) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func =
       std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1594,6 +1794,7 @@ void uxdevice::platform::dashes(const std::vector<double> &dashes,
 */
 void uxdevice::platform::tollerance(double _t) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1603,6 +1804,7 @@ void uxdevice::platform::tollerance(double _t) {
 */
 void uxdevice::platform::op(op_t _op) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func =
       std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
   DL.push_back(make_unique<FUNCTION>(func));
@@ -1613,8 +1815,8 @@ void uxdevice::platform::op(op_t _op) {
 */
 void uxdevice::platform::source(Paint &p) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
-
   CAIRO_FUNCTION func = std::bind(fn, _1, p);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1625,6 +1827,7 @@ void uxdevice::platform::source(Paint &p) {
 void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
                              double angle2, bool bNegative) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bNegative) {
     func = std::bind(cairo_arc_negative, _1, xc, yc, radius, angle1, angle2);
@@ -1640,6 +1843,7 @@ void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
 void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
                                double x3, double y3, bool bRelative) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bRelative) {
     func = std::bind(cairo_rel_curve_to, _1, x1, y1, x2, y2, x3, y3);
@@ -1654,6 +1858,7 @@ void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
 */
 void uxdevice::platform::line(double x, double y, bool bRelative) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bRelative) {
     func = std::bind(cairo_rel_line_to, _1, x, y);
@@ -1668,6 +1873,7 @@ void uxdevice::platform::line(double x, double y, bool bRelative) {
 */
 void uxdevice::platform::stroke(bool bPreserve) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bPreserve) {
     func = std::bind(cairo_stroke_preserve, _1);
@@ -1682,6 +1888,7 @@ void uxdevice::platform::stroke(bool bPreserve) {
 */
 void uxdevice::platform::move(double x, double y, bool bRelative) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func;
   if (bRelative) {
     func = std::bind(cairo_rel_move_to, _1, x, y);
@@ -1697,6 +1904,7 @@ void uxdevice::platform::move(double x, double y, bool bRelative) {
 void uxdevice::platform::rectangle(double x, double y, double width,
                                    double height) {
   using namespace std::placeholders;
+  std::lock_guard<std::mutex> lock(DL_mutex);
   CAIRO_FUNCTION func = std::bind(cairo_rectangle, _1, x, y, width, height);
   DL.push_back(make_unique<FUNCTION>(func));
 }
@@ -1740,7 +1948,8 @@ void uxdevice::platform::AREA::shrink(double a) {
 \brief The FONT object provides contextual font object for library.
 */
 void uxdevice::platform::FONT::invoke(DisplayUnitContext &context) {
-  fontDescription = pango_font_description_from_string(description.data());
+  if (!fontDescription)
+    fontDescription = pango_font_description_from_string(description.data());
 }
 
 /**
@@ -1912,11 +2121,6 @@ void uxdevice::platform::DRAWTEXT::invoke(DisplayUnitContext &context) {
 /// https://gist.github.com/benjamin9999/3809142
 /// http://www.antigrain.com/__code/include/agg_blur.h.html
 /// This version works only with RGBA color
-#define DEBUG
-#if defined(DEBUG)
-
-#endif // defined
-
 void uxdevice::platform::blurImage(cairo_surface_t *img, unsigned int radius) {
   static unsigned short const stackblur_mul[255] = {
       512, 512, 456, 512, 328, 456, 335, 512, 405, 328, 271, 456, 388, 335,
@@ -2622,14 +2826,36 @@ void uxdevice::platform::drawCaret(const int x, const int y, const int h) {}
 
 */
 void uxdevice::platform::resize(const int w, const int h) {
-  context.windowWidth = w;
-  context.windowHeight = h;
 
 #if defined(__linux__)
   if (context.xcbSurface) {
+    if (context.windowWidth == w && context.windowHeight == h)
+      return;
+    std::lock_guard<std::mutex> lockSurface(context.surface_mutex);
+
+    // copy old surface to new one.
+    cairo_format_t format = CAIRO_FORMAT_ARGB32;
+    cairo_surface_t *newSurface = cairo_image_surface_create(format, w, h);
+
+    cairo_t *cr = cairo_create(newSurface);
+    cairo_rectangle(cr, 0, 0, context.windowWidth, context.windowHeight);
+    cairo_set_source_surface(cr, context.offScreen, 0, 0);
+    cairo_fill(cr);
+    cairo_surface_destroy(context.offScreen);
+
+    context.offScreen = newSurface;
+    // create cairo context
+    cairo_destroy(context.cr);
+    context.cr = cairo_create(context.offScreen);
+
     cairo_xcb_surface_set_size(context.xcbSurface, w, h);
     context.preclear = true;
+    bRenderWork = true;
+    // postDirty(0, 0, w, h);
   }
+
+  context.windowWidth = w;
+  context.windowHeight = h;
 
 #elif defined(_WIN64)
 

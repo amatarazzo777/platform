@@ -43,14 +43,16 @@ typedef unsigned char u_int8_t;
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <mutex>
 #include <thread>
-#include <future>
+
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -248,7 +250,13 @@ enum class lineJoin {
   round = CAIRO_LINE_JOIN_ROUND,
   bevel = CAIRO_LINE_JOIN_BEVEL
 };
-using areaType = enum class areaType { none, circle, ellipse, rectangle, roundedRectangle };
+using areaType = enum class areaType {
+  none,
+  circle,
+  ellipse,
+  rectangle,
+  roundedRectangle
+};
 
 enum op_t {
   opClear = CAIRO_OPERATOR_CLEAR,
@@ -482,12 +490,17 @@ public:
   void openWindow(const std::string &sWindowTitle, const unsigned short width,
                   const unsigned short height);
   void closeWindow(void);
+  bool processing(void) { return bProcessing; }
 
-  void render(const event &evt);
-  void processEvents(void);
+  void startProcessing(int _fps);
+  void renderLoop(void);
+  void copyRectangle(cairo_t *cr, const bounds &_area);
+  void processRendering(void);
+
   void dispatchEvent(const event &e);
 
   void clear(void);
+
   void text(const std::string &s);
   void text(const std::stringstream &s);
   void image(const std::string &s);
@@ -703,6 +716,7 @@ private:
     virtual std::size_t index() = 0;
     virtual ~DisplayUnit() {}
     virtual void invoke(DisplayUnitContext &context) = 0;
+    virtual bool renderWork(void) { return false; }
   };
 
   using CLEAROPTION = class CLEAROPTION : public DisplayUnit {
@@ -807,7 +821,6 @@ private:
   };
 
   using BACKGROUND = class BACKGROUND : public DisplayUnit, public Paint {
-  public:
   public:
     VIRTUAL_INDEX(BACKGROUND);
 
@@ -950,6 +963,7 @@ private:
       if (layout)
         g_object_unref(layout);
     }
+    bool renderWork(void) { return true; }
     std::size_t beginIndex = 0;
     std::size_t endIndex = 0;
     bool bEntire = true;
@@ -967,6 +981,7 @@ private:
     DRAWIMAGE(void) {}
     ~DRAWIMAGE() {}
     void invoke(DisplayUnitContext &context);
+    bool renderWork(void) { return true; }
 
   private:
     AREA src = AREA();
@@ -979,6 +994,7 @@ private:
     DRAWAREA() {}
     ~DRAWAREA() {}
     void invoke(DisplayUnitContext &context);
+    bool renderWork(void) { return true; }
 
   private:
   };
@@ -1021,8 +1037,7 @@ private:
     typedef std::array<DisplayUnit *, contextUnitIndex::MAX_idx> contextArray;
     contextArray currentUnit;
 
-    DisplayUnitContext(void) : currentUnit(contextArray()) {
-    }
+    DisplayUnitContext(void) : currentUnit(contextArray()) {}
 
 #define INDEXED_ACCESSOR(NAME)                                                 \
   inline platform::NAME &NAME(void) const {                                    \
@@ -1066,6 +1081,8 @@ private:
     unsigned short windowHeight = 0;
     bool windowOpen = false;
     cairo_t *cr = nullptr;
+    cairo_surface_t *offScreen = nullptr;
+    std::mutex surface_mutex = std::mutex();
 
 #if defined(__linux__)
     Display *xdisplay = nullptr;
@@ -1080,6 +1097,7 @@ private:
     xcb_key_symbols_t *syms = nullptr;
 
     cairo_surface_t *xcbSurface = nullptr;
+
     bool preclear = true;
 
 #elif defined(_WIN64)
@@ -1095,9 +1113,21 @@ private:
   DisplayUnitContext context = DisplayUnitContext();
 
 private:
+  bool bProcessing = false;
+  int framesPerSecond = 30;
   errorHandler fnError = nullptr;
   eventHandler fnEvents = nullptr;
   std::vector<std::unique_ptr<DisplayUnit>> DL = {};
+  std::mutex DL_mutex = std::mutex();
+
+  std::mutex RenderWork_mutex = std::mutex();
+  std::condition_variable bRenderWork_condition = std::condition_variable();
+  bool bRenderWork = false;
+
+  std::vector<bounds> dirtyRectangles = {};
+  std::mutex dirtyRectangles_mutex = std::mutex();
+  void postDirty(double x, double y, double w, double h);
+  void postDirty_RenderInternal(double x, double y, double w, double h);
 
   std::vector<eventHandler> onfocus = {};
   std::vector<eventHandler> onblur = {};

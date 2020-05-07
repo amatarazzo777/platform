@@ -4,7 +4,8 @@
 using namespace std;
 using namespace uxdevice;
 
-void test0(platform &vm);
+void draw(platform &vm, double dStep);
+void drawUpdate(platform &vm, double dStep);
 
 void testStart(string_view sFunc) {
 #if defined(CONSOLE)
@@ -188,11 +189,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // create the main window area. This may this is called a Viewer object.
   // The main browsing window. It is an element as well.
   auto vis = platform(eventDispatch, handleError);
+
+  // starts rendering and message threads
+  vis.startProcessing(15);
+
+  // items may be inserted before window open
+  // the information goes in but is not processed
+  // until after window is open.
+  draw(vis, 1);
+
   vis.openWindow("Information Title", 800, 600);
 
-  vis.clear();
 
-  vis.scale(1.1, 1.1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+  for(int i=0;i<100;i++) {
+    double dStep = 1;
+    drawUpdate(vis, dStep);
+  }
+
+  // clients are free to continue processing
+  // the vis.processing() is used to catch the program from exiting
+  // when the user closes the window, the switch will be false
+  double dStep = 1;
+  while (vis.processing()) {
+    drawUpdate(vis, dStep);
+    dStep = dStep + .1;
+    if (dStep > 2)
+      dStep = 1;
+    // run ten
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  }
+}
+
+void eventDispatch(const event &evt) {}
+
+/************************************************************************
+************************************************************************/
+void draw(platform &vis, double dStep) {
+  vis.clear();
 
   vis.antiAlias(antialias::subPixel);
 
@@ -257,7 +291,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   // draw svg and images
   vis.area(15, 300, 200, 220);
-  vis.image("/home/anthony/development/platform/button.svg");
+  vis.image("/home/anthony/development/platform/button");
   vis.drawImage();
 
   // inline image
@@ -330,7 +364,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   vis.save();
   vis.translate(0, 400);
-  vis.rotate(PI / 180 * -35);
+  vis.rotate(PI / 180 * (-35 - (dStep * 35)));
   // gradient TEXT
   vis.area(0, 0, 300, 300);
   vis.text("Text Gradient");
@@ -349,15 +383,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   vis.text("Text Textured");
   // use base 64 string as texture fill
   vis.textFill(stripes);
-  vis.textOutline("/home/anthony/development/platform/bug.png", 3);
+  vis.textOutline("blue", 3);
   vis.drawText();
-
-  vis.processEvents();
-  test0(vis);
 }
 
-void eventDispatch(const event &evt) {}
+void drawUpdate(platform &vis, double dStep) {
+  vis.textAlignment(alignment::left);
+  stringstream ss;
+  ss << rand() % 255;
 
-/************************************************************************
-************************************************************************/
-void test0(platform &vm) {}
+  vis.text(ss);
+
+  double x = rand() % 800;
+  double y = rand() % 600;
+  vis.area(x, y, 30, 30);
+
+  vis.font("DejaVu Sans Bold 15");
+  vis.pen(rand() % 255 / 255.0, rand() % 255 / 255.0, rand() % 255 / 255.0);
+  vis.textShadowNone();
+  vis.textOutlineNone();
+  vis.textFillNone();
+
+  vis.drawText();
+
+  // objArea=vis.area(0, 0, 800, 600, 120, 120);
+
+  // objArea.update(0, 0, 600, 600, 20, 20);
+  // objArea.replace( platform::area, 0, 0, 800);
+  // objArea.delete();
+}

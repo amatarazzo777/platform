@@ -14,7 +14,7 @@ release: vis.out
 all: vis.out
 
 vis.out: main.o uxdevice.o
-	$(CC) -o vis.out main.o uxdevice.o  -lm -lX11-xcb -lX11 -lxcb -lxcb-image -lxcb-keysyms -lstdc++ $(LFLAGS) 
+	$(CC) -o vis.out main.o uxdevice.o -lpthread -lm -lX11-xcb -lX11 -lxcb -lxcb-image -lxcb-keysyms -lstdc++ $(LFLAGS) 
 	
 main.o: main.cpp uxdevice.hpp
 	$(CC) $(CFLAGS) $(INCLUDES) -c main.cpp -o main.o
