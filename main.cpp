@@ -6,6 +6,8 @@ using namespace uxdevice;
 
 void draw(platform &vm, double dStep);
 void drawUpdate(platform &vm, double dStep);
+void drawSimple(platform &vis);
+void drawSimple2(platform &vis);
 
 void testStart(string_view sFunc) {
 #if defined(CONSOLE)
@@ -22,8 +24,8 @@ void handleError(const std::string errText) {
 
 // inline PNG data using the RFC2397 base 64 encoding scheme.
 // This may be useful in some cases, yet raw byte data will be smaller in memory
-// description but larger in the source description perhaps unless the RAW input
-// format is used for literal string data.
+// description but larger in the source description perhaps unless the c++ RAW
+// literanl input format is used for literal string data.
 const char *stripes =
     "data:image/"
     "png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAARCAYAAABEvFULAAAABmJLR0QA/wD/"
@@ -66,9 +68,11 @@ const char *stripes =
 
 // inline SVG, you may build this at run time or parameterize certain aspects
 // of the style or and of its data. Not all of the blocks below are required,
-// such as meta data. THe parsing is fast, however the information is still
+// such as meta data. The parsing is fast, however the information is still
 // transposed from text. The biggest slowdowns are the effects that use the
-// Gaussian blur functions.
+// Gaussian blur functions. This uses the RSVG api for its rendering and
+// parsing. Files may be drawn in the inkscape application and transposed at
+// this layer.
 std::string sSVG =
     R"data(<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
@@ -191,37 +195,113 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   auto vis = platform(eventDispatch, handleError);
 
   // starts rendering and message threads
-  vis.startProcessing(15);
+  // parameter notes frame per second
+  vis.startProcessing(60);
 
   // items may be inserted before window open
   // the information goes in but is not processed
   // until after window is open.
-  draw(vis, 1);
+ draw(vis, 1);
+  //drawSimple(vis);
+  // drawSimple2(vis);
 
   vis.openWindow("Information Title", 800, 600);
 
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-  for(int i=0;i<100;i++) {
-    double dStep = 1;
-    drawUpdate(vis, dStep);
-  }
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
   // when the user closes the window, the switch will be false
   double dStep = 1;
   while (vis.processing()) {
-    drawUpdate(vis, dStep);
-    dStep = dStep + .1;
-    if (dStep > 2)
-      dStep = 1;
-    // run ten
+    for (int i = 0; i < 100; i++) {
+      // drawUpdate(vis, dStep);
+      dStep = dStep + .1;
+      if (dStep > 2)
+        dStep = 1;
+    }
+    // sleep for some time to not take over cpu,
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
   }
+
+  return 0;
 }
 
+// events such as mouse and keyboard input are distributed here.
+// The area named during the event is tied to the mouse and keyboard
+// focus input.
 void eventDispatch(const event &evt) {}
+
+void drawSimple(platform &vis) {
+
+  vis.antiAlias(antialias::subPixel);
+
+  vis.textAlignment(alignment::left);
+  // set the font name according to pango spi. see pango font description.
+  vis.font("DejaVu Sans normal 24");
+  vis.textOutline("darkred",1);
+  vis.textFill("red");
+  vis.textShadow("black");
+  // area is a rounded box 120,120 are the corner pixel sizes.
+  // rectangle is x-0,y=0 width=800, height = 600
+  vis.area(0, 0, 800, 300, 120, 120);
+  vis.text("The sun sets casting its refraction upon the mountain side. ");
+  vis.drawText();
+
+  vis.font("DejaVu Sans normal 14");
+  for (int i = 0; i < 20; i++) {
+
+    vis.area(0, 100 + i * 22, 100, 28, 10, 10);
+    vis.text("scroll ");
+    vis.background(0, 0, 0, 100, {{"yellow"}, {"goldenrod"}});
+    vis.pen("white");
+    vis.drawArea();
+    vis.save();
+    vis.translate(3, 0);
+    vis.pen("red");
+    vis.drawText();
+    vis.restore();
+  }
+
+  vis.area(200, 100, 500, 500);
+  vis.image("/home/anthony/development/platform/image/23.svg");
+  vis.drawImage();
+}
+void drawSimple2(platform &vis) {
+  // circle
+  vis.area(400, 200, 100);
+  vis.background(0, 0, 0, 100, {{"yellow"}, {"green"}, {"orange"}, {"blue"}});
+  vis.pen(0, 0, 6, 2, {{"white"}, {"red"}});
+  vis.lineWidth(2);
+  vis.drawArea();
+
+  // round box
+  vis.area(0, 200, 200, 100, 29, 20);
+
+  vis.background(0, 0, 5, 10, {{"lime"}, {"red"}});
+
+  // linear gradient, rgb (0 - 1) provided., or can use
+  //  red, green, blue , and alpha
+  vis.pen(0, 0, 0, 100, {{"yellow"}, {"green"}, {"orange"}, {"blue"}});
+  vis.lineWidth(3);
+  vis.drawArea();
+
+  // circle
+  vis.area(200, 200, 100);
+  vis.background(0, 0, 0, 100, {{"yellow"}, {.8, "lightbrown"}, {"brown"}});
+  vis.pen(0, 0, 0, 100, {{"yellow"}, {"orange"}});
+  vis.lineWidth(5);
+  vis.drawArea();
+
+  // circle
+  vis.area(300, 200, 100);
+  Paint bugs2 = Paint("/home/anthony/development/platform/image/bug.png");
+  vis.lineWidth(4);
+  bugs2.extend(extendType::reflect);
+  bugs2.filter(filterType::bilinear);
+  vis.background(bugs2);
+  vis.pen("orange");
+  vis.drawArea();
+}
 
 /************************************************************************
 ************************************************************************/
@@ -229,8 +309,21 @@ void draw(platform &vis, double dStep) {
   vis.clear();
 
   vis.antiAlias(antialias::subPixel);
+  // area is a rounded box 120,120 are the corner pixel sizes.
+  // rectangle is x-0,y=0 width=800, height = 600
+  vis.area(0, 0, 800, 600, 120, 120);
+
+  // create a paint object. paint objects may define the fill of an area, or
+  // ther outline of an are. this includes both area _NAME_ and font api. fonts
+  // can be filled with a color, repeating image, SVG requires that one place
+  // the width and height of the render. Gradient may also provide thefill
+  // pattern as well as the opaque and translucent color. colors can be provided
+  // in 24bit, string and rgb component at 0-1 per channel. This is all due to
+  // the cairo graphics api flexibility.
 
   vis.textAlignment(alignment::left);
+
+  // name text that is to be displayed
   vis.text(
       "The sun sets casting its refraction upon the mountain side. "
       "The glistening oil coats upon the ravens are a remark of healthiness. "
@@ -241,10 +334,22 @@ void draw(platform &vis, double dStep) {
       "the continual persistence of the system.  A remarkable sight. A "
       "heavenly "
       "home.");
+
+  // set the font name according to pango spi. see pango font description.
   vis.font("DejaVu Sans Bold 14");
+
+  // area is a rounded box 120,120 are the corner pixel sizes.
+  // rectangle is x-0,y=0 width=800, height = 600
   vis.area(0, 0, 800, 600, 120, 120);
 
-  Paint tiger = Paint("/home/anthony/development/platform/23.svg", 50, 50);
+  // create a paint object. paint objects may define the fill of an area, or
+  // ther outline of an are. this includes both area _NAME_ and font api. fonts
+  // can be filled with a color, repeating image, SVG requires that one place
+  // the width and height of the render. Gradient may also provide thefill
+  // pattern as well as the opaque and translucent color. colors can be provided
+  // in 24bit, string and rgb component at 0-1 per channel. This is all due to
+  // the cairo graphics api flexibility.
+  Paint tiger = Paint("/home/anthony/development/platform/image/23.svg", 50, 50);
   tiger.rotate(PI / 180 * 10);
   tiger.extend(extendType::reflect);
   tiger.filter(filterType::bilinear);
@@ -264,11 +369,11 @@ void draw(platform &vis, double dStep) {
   vis.drawText();
 
   vis.areaEllipse(00, 300, 500, 100);
-  Paint bugs3 = Paint("/home/anthony/development/platform/text.png");
+  Paint bugs3 = Paint("/home/anthony/development/platform/image/text.png");
   vis.background(bugs3);
   vis.drawArea();
 
-  // button
+  // button translated from svg file
   vis.save();
   vis.translate(200, 200);
   vis.area(25.702381, 108.0119, 167.06548, 61.988094, 17.41297, 14.174099);
@@ -291,7 +396,7 @@ void draw(platform &vis, double dStep) {
 
   // draw svg and images
   vis.area(15, 300, 200, 220);
-  vis.image("/home/anthony/development/platform/button");
+  vis.image("/home/anthony/development/platform/image/button2.svg");
   vis.drawImage();
 
   // inline image
@@ -305,11 +410,11 @@ void draw(platform &vis, double dStep) {
   vis.drawImage();
 
   vis.area(400, 300, 200, 200);
-  vis.image("/home/anthony/development/platform/drawing.svg");
+  vis.image("/home/anthony/development/platform/image/drawing.svg");
   vis.drawImage();
 
   vis.area(600, 300, 200, 200);
-  vis.image("/home/anthony/development/platform/23.svg");
+  vis.image("/home/anthony/development/platform/image/23.svg");
   vis.drawImage();
 
   // draw objects in a row
@@ -328,15 +433,17 @@ void draw(platform &vis, double dStep) {
                   {.8, "darkred", .5},
                   {.9, "maroon", .4},
                   {"black"}});
-  vis.pen("black");
   vis.pen(0, 0, 6, 2, {{"white"}, {"red"}});
   vis.lineWidth(2);
   vis.drawArea();
 
   // round box
   vis.area(0, 200, 200, 100, 29, 20);
+
   vis.background(0, 0, 5, 10, {{"lime"}, {"red"}});
-  vis.pen("black");
+
+  // linear gradient, rgb (0 - 1) provided., or can use
+  //  red, green, blue , and alpha
   vis.pen(0, 0, 0, 100, {{0, 0, 1}, {0, 0, .30}});
   vis.lineWidth(3);
   vis.drawArea();
@@ -350,7 +457,7 @@ void draw(platform &vis, double dStep) {
 
   // circle
   vis.area(300, 200, 100);
-  Paint bugs2 = Paint("/home/anthony/development/platform/bug.png");
+  Paint bugs2 = Paint("/home/anthony/development/platform/image/bug.png");
   vis.lineWidth(4);
   bugs2.extend(extendType::reflect);
   bugs2.filter(filterType::bilinear);
@@ -364,7 +471,7 @@ void draw(platform &vis, double dStep) {
 
   vis.save();
   vis.translate(0, 400);
-  vis.rotate(PI / 180 * (-35 - (dStep * 35)));
+  // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
   // gradient TEXT
   vis.area(0, 0, 300, 300);
   vis.text("Text Gradient");
@@ -381,7 +488,8 @@ void draw(platform &vis, double dStep) {
   vis.font("DejaVu Sans Bold 44");
   vis.area(300, 400, 300, 300);
   vis.text("Text Textured");
-  // use base 64 string as texture fill
+
+  // use base 64 inline image string as texture fill
   vis.textFill(stripes);
   vis.textOutline("blue", 3);
   vis.drawText();
