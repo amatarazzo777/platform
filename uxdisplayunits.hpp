@@ -26,6 +26,11 @@ public:
   virtual ~DisplayUnit() {}
   virtual void invoke(DisplayContext &context){};
   virtual bool isOutput(void) { return false; }
+  void error(const char *s) {_serror=s;}
+  bool valid(void) { return _serror == nullptr; }
+  bool isprocessed(void) { return bprocessed; }
+  bool bprocessed = false;
+  const char *_serror = nullptr;
 };
 
 /**
@@ -40,12 +45,12 @@ public:
   DrawingOutput(){};
   virtual ~DrawingOutput(){};
   bool hasInkExtents = false;
-  cairo_rectangle_int_t cairoInkRectangle = cairo_rectangle_int_t();
+  cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
   cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
-  DisplayContext::RenderList renderRectangles = DisplayContext::RenderList();
-  cairo_rectangle_int_t *inkExtents(void) { return &cairoInkRectangle; }
+  cairo_rectangle_int_t *inkExtents(void) { return &inkRectangle; }
   bool bCompleted = false;
   bool visible(DisplayContext &context);
+  DrawLogic fnDraw=DrawLogic();
 };
 
 class CLEARUNIT : public DisplayUnit {
@@ -57,7 +62,10 @@ public:
     return *this;
   }
   CLEARUNIT(const CLEARUNIT &other) { *this = other; }
-  void invoke(DisplayContext &context) { *p = nullptr; }
+  void invoke(DisplayContext &context) {
+    *p = nullptr;
+    bprocessed = true;
+  }
   void **p = nullptr;
 };
 
@@ -67,6 +75,8 @@ public:
       : setting(static_cast<cairo_antialias_t>(_antialias)) {}
   void invoke(DisplayContext &context) {
     cairo_set_antialias(context.cr, setting);
+    context.setUnit(this);
+    bprocessed = true;
   }
 
   cairo_antialias_t setting;
@@ -100,6 +110,7 @@ public:
   void invoke(DisplayContext &context) {
     cairoInkRectangle = {(int)x, (int)y, (int)w, (int)h};
     context.setUnit(this);
+    bprocessed = true;
   }
 };
 
@@ -108,7 +119,10 @@ public:
   STRING(const std::string &s) : data(s) {}
   ~STRING() {}
   std::string data;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class FONT : public DisplayUnit {
@@ -136,6 +150,7 @@ public:
     if (!fontDescription)
       fontDescription = pango_font_description_from_string(description.data());
     context.setUnit(this);
+    bprocessed = true;
   }
 };
 
@@ -153,7 +168,10 @@ public:
       double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~PEN() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class BACKGROUND : public DisplayUnit, public Paint {
@@ -171,7 +189,10 @@ public:
              double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~BACKGROUND() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class ALIGN : public DisplayUnit {
@@ -180,7 +201,10 @@ public:
   ~ALIGN() {}
   void emit(PangoLayout *layout);
   alignment setting = alignment::left;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class EVENT : public DisplayUnit {
@@ -188,7 +212,10 @@ public:
   EVENT(eventHandler _eh) : fn(_eh){};
   ~EVENT() {}
   eventHandler fn;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class TEXTSHADOW : public DisplayUnit, public Paint {
@@ -218,7 +245,10 @@ public:
         y(yOffset) {}
 
   ~TEXTSHADOW() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 
 public:
   unsigned short radius = 3;
@@ -255,7 +285,10 @@ public:
     cairo_set_line_width(cr, lineWidth);
   }
 
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 
 public:
   double lineWidth = .5;
@@ -277,7 +310,10 @@ public:
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
   ~TEXTFILL() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {
+    context.setUnit(this);
+    bprocessed = true;
+  }
 };
 
 class IMAGE : public DisplayUnit {
@@ -299,7 +335,6 @@ public:
   bool bIsSVG = false;
   bool bLoaded = false;
 };
-
 class DRAWTEXT : public DisplayUnit, public DrawingOutput {
 public:
   DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
@@ -329,7 +364,16 @@ public:
   PangoRectangle ink_rect = PangoRectangle();
   PangoRectangle logical_rect = PangoRectangle();
 
+  // local parameter pointers
+  PEN *pen = nullptr;
+  TEXTOUTLINE *textoutline = nullptr;
+  TEXTFILL *textfill = nullptr;
+  AREA *area = nullptr;
+  STRING *text = nullptr;
+  FONT *font = nullptr;
+
   void invoke(DisplayContext &context);
+
 };
 
 class DRAWIMAGE : public DisplayUnit, public DrawingOutput {
@@ -337,11 +381,21 @@ public:
   DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
   DRAWIMAGE(void) {}
   ~DRAWIMAGE() {}
+  DRAWIMAGE(const DRAWIMAGE &other) { *this = other; }
+  DRAWIMAGE &operator=(const DRAWIMAGE &other) {
+    area = other.area;
+    image= other.image;
+    return *this;
+  }
+
   void invoke(DisplayContext &context);
   bool isOutput(void) { return true; }
 
 private:
   AREA src = AREA();
+  AREA *area = nullptr;
+  IMAGE *image=nullptr;
+
   bool bEntire = true;
 };
 
@@ -349,9 +403,19 @@ class DRAWAREA : public DisplayUnit, public DrawingOutput {
 public:
   DRAWAREA() {}
   ~DRAWAREA() {}
-  void invoke(DisplayContext &context);
+  DRAWAREA(const DRAWAREA &other) { *this = other; }
+  DRAWAREA &operator=(const DRAWAREA &other) {
+    area = other.area;
+    background= other.background;
+    pen= other.pen;
+    return *this;
+  }
 
-private:
+  void invoke(DisplayContext &context);
+  AREA *area = nullptr;
+  BACKGROUND *background=nullptr;
+  PEN *pen=nullptr;
+
 };
 
 /**

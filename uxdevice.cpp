@@ -38,8 +38,11 @@ void uxdevice::platform::renderLoop(void) {
     // window to a greater value. These values are inserted as part
     // of the paint event. As well, the underlying surface may
     // need to be resized. This function acquires locks on these
-    // for these small lists for the multi-threaded necessity.
+    // small lists for the multi-threaded necessity.
     if (context.surfacePrime()) {
+
+      // searches for unready and syncs display context
+      drawablesToReady();
 
       // paints the regions
       exposeRegions();
@@ -59,49 +62,54 @@ void uxdevice::platform::renderLoop(void) {
   }
 }
 
+void uxdevice::platform::drawablesToReady(void) {
+  DL_SPIN;
+  // process the display list
+  // moving render objects
+  itDL_Processed=std::find_if(DL.begin(),DL.end(), [](std::unique_ptr<DisplayUnit> &n) {
+                              return n->bprocessed==false;
+  });
+
+  while (itDL_Processed != DL.end()) {
+    auto &n=*(*itDL_Processed).get();
+    n.invoke(context);
+    if (n.isOutput()) {
+      drawables.push_back(itDL_Processed->get());
+    }
+
+    itDL_Processed++;
+  }
+
+  // inform display context about new drawing
+  context.collectables(&drawables);
+
+  DL_CLEAR;
+}
+
 /**
 \internal
 \brief The routine checks the display list for work.
 If any items are on screen, it is rendered to the xcb surface..
 */
 void uxdevice::platform::exposeRegions(void) {
-
+  DL_SPIN;
   // hides all drawing operations until pop to source.
   cairo_push_group(context.cr);
 
-  // rectangle of area needs painting background first
+  // rectangle of area needs painting background first.
   // these are subareas perhaps multiples exist because of resize
   // coordinates. The information is generated from the
   // paint dispatch event. When the window is opened
   // render work will contain entire window
   context.iterate([=](auto &r) {
-    cairo_rectangle(context.cr, (double)r.x, (double)r.y, (double)r.width,
-                    (double)r.height);
-    cairo_set_source_rgba(context.cr, 0.0, 0.0, 1.0, 1.0);
+    brush.translate(r.rect.x, r.rect.y);
+    brush.emit(context.cr);
+    cairo_rectangle(context.cr, r.rect.x, r.rect.y, r.rect.width,
+                    r.rect.height);
     cairo_fill(context.cr);
+
+    context.plot(r);
   });
-
-  // iterate the display list
-  // if items are within the render work region,
-  // they are drawn
-  DL_SPIN;
-
-  // clear unit parameters
-  context.currentUnits = CurrentUnits();
-
-  for (auto &n : DL) {
-    n->invoke(context);
-    if (n->isOutput()) {
-      cairo_status_t status = cairo_status(context.cr);
-      if (status) {
-        std::stringstream sError;
-        sError << "ERR_CAIRO render loop "
-               << "  " << __FILE__ << " " << __func__ << " "
-               << cairo_status_to_string(status);
-        throw std::runtime_error(sError.str());
-      }
-    }
-  }
 
   DL_CLEAR;
 
@@ -297,10 +305,11 @@ uxdevice::platform::~platform() {
 */
 void uxdevice::platform::openWindow(const std::string &sWindowTitle,
                                     const unsigned short width,
-                                    const unsigned short height) {
+                                    const unsigned short height, Paint background) {
 
   context.windowWidth = width;
   context.windowHeight = height;
+  brush = background;
 
 #if defined(__linux__)
   // this open provides interoperability between xcb and xwindows
@@ -1222,7 +1231,7 @@ void uxdevice::platform::drawImage(void) {
 */
 void uxdevice::platform::drawArea(void) {
   DL_SPIN;
-  DL.push_back(make_unique<DRAWAREA>());
+  DL.push_back(std::make_unique<DRAWAREA>());
   DL_CLEAR;
 }
 

@@ -82,14 +82,11 @@ void uxdevice::DisplayContext::resizeSurface(const int w, const int h) {
   SURFACE_REQUESTS_CLEAR;
 }
 
-void uxdevice::DisplayContext::iterate(
-    std::function<void(cairo_rectangle_int_t &n)> fn) {
+void uxdevice::DisplayContext::iterate(RegionFunc fn) {
   REGIONS_SPIN;
 
-  for (auto &it : _regions) {
-    fn(it.rect);
-    it.eval = true;
-  }
+  for (auto &it : _regions)
+    fn(it);
 
   REGIONS_CLEAR;
 }
@@ -97,7 +94,7 @@ void uxdevice::DisplayContext::iterate(
 void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
   REGIONS_SPIN;
   if (on)
-    _regions.push_back(Region{x, y, w, h});
+    _regions.push_back(CairoRegion{x, y, w, h});
   else {
     while (!_regions.empty()) {
       if (!_regions.front().eval)
@@ -109,8 +106,8 @@ void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
 }
 
 bool uxdevice::DisplayContext::state(void) {
-  REGIONS_SPIN;
   bool ret = false;
+  REGIONS_SPIN;
 
   if (!_regions.empty())
     for (auto it : _regions)
@@ -128,46 +125,74 @@ bool uxdevice::DisplayContext::state(void) {
  the rectangle is within the region.
 
 */
-cairo_region_overlap_t
-uxdevice::DisplayContext::contains(const cairo_rectangle_int_t *rectangle,
-                                   RenderList &renderList) {
-  cairo_region_overlap_t ret = CAIRO_REGION_OVERLAP_PART;
+void uxdevice::DisplayContext::collectables(DisplayUnitCollection *obj) {
+  collection = obj;
+  viewportRectangle = {offsetx, offsety, offsetx + windowWidth,
+                       offsety + windowHeight};
+  if (!viewport)
+    viewport = cairo_region_create_rectangle(&viewportRectangle);
 
-  REGIONS_SPIN;
+  // first time or regenerate
+  if (!objectRegion) {
+    for (auto unit : *collection) {
+      DrawingOutput &n=*dynamic_cast<DrawingOutput *>(unit);
+      inkedAreas.push_back(n.inkExtents());
+      std::size_t loc = reinterpret_cast<std::size_t>(inkedAreas.back());
+      inkedAreaAssociated[loc] = n.fnDraw;
+    }
 
-  renderList.clear();
+    objectRegion =
+        cairo_region_create_rectangles(*inkedAreas.data(), inkedAreas.size());
 
-  for (auto it : _regions) {
-    // eval is set when the background is cleared
-    // no need to draw it if -- GLITCH within the logic?
-    //if (it.eval)   continue;
+    cairo_region_intersect(viewport, objectRegion);
+    inkedAreasTotal = collection->size();
+    itcollection = collection->end();
+  } else {
 
-    // determine if the object is within the region
-    ret = cairo_region_contains_rectangle(it._ptr, rectangle);
-    switch (ret) {
-    case CAIRO_REGION_OVERLAP_IN:
-      renderList.push_back({(double)rectangle->x, (double)rectangle->y,
-                            (double)rectangle->width,
-                            (double)rectangle->height});
-      break;
+    while (itcollection != collection->end()) {
+      DrawingOutput &n=*dynamic_cast<DrawingOutput *>(*itcollection);
+      cairo_rectangle_int_t *r=n.inkExtents();
+      inkedAreas.push_back(r);
+      std::size_t loc = reinterpret_cast<std::size_t>(r);
+      inkedAreaAssociated[loc] = n.fnDraw;
 
-    case CAIRO_REGION_OVERLAP_PART: {
-      cairo_region_t *tmp = cairo_region_copy(it._ptr);
-      cairo_region_intersect_rectangle(tmp, rectangle);
-      cairo_rectangle_int_t partial;
-      cairo_region_get_extents(tmp, &partial);
-      renderList.push_back({(double)partial.x, (double)partial.y,
-                            (double)partial.width, (double)partial.height});
+      cairo_region_union_rectangle(objectRegion,r);
+      cairo_region_xor_rectangle(viewport, r);
 
-      cairo_region_destroy(tmp);
-    } break;
+      itcollection++;
+    }
+    inkedAreasTotal = collection->size();
+  }
+}
 
-    case CAIRO_REGION_OVERLAP_OUT:
-      break;
+/**
+ \details Routine iterates each of the render work regions and tests if
+ the rectangle is within the region.
+
+*/
+void uxdevice::DisplayContext::plot(CairoRegion plotArea) {
+
+  // used to store
+  cairo_region_t *dst = cairo_region_copy(viewport);
+
+  // compute rectangles, values are uploaded through ptr
+  cairo_region_intersect(dst, plotArea._ptr);
+
+  if (!cairo_region_is_empty(dst)) {
+    int numIntersects = cairo_region_num_rectangles(dst);
+    for (int nth = 0; nth < numIntersects; nth++) {
+      cairo_rectangle_int_t rectangle;
+      cairo_region_get_rectangle(dst, nth, &rectangle);
+      std::size_t key = reinterpret_cast<std::size_t>(&rectangle);
+      AssociatedInkFN::iterator itfn = inkedAreaAssociated.find(key);
+      if(itfn != inkedAreaAssociated.end()) {
+        DrawLogic &fn = itfn->second;
+        fn(*this, (double)rectangle.x, (double)rectangle.y,
+               (double)rectangle.width, (double)rectangle.height);
+      }
     }
   }
 
-  REGIONS_CLEAR;
 
-  return ret;
+  return;
 }

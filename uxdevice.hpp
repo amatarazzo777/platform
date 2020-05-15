@@ -77,8 +77,10 @@ public:
   platform(const eventHandler &evtDispatcher, const errorHandler &fn);
   ~platform();
   void openWindow(const std::string &sWindowTitle, const unsigned short width,
-                  const unsigned short height);
+                  const unsigned short height,
+                  Paint background = Paint("white"));
   void closeWindow(void);
+  void backgroundBrush(Paint &p) { brush = p; }
   bool processing(void) { return bProcessing; }
 
   void startProcessing(int _fps);
@@ -237,7 +239,7 @@ public:
 private:
   void renderLoop(void);
   void exposeRegions(void);
-
+  void drawablesToReady(void);
   void dispatchEvent(const event &e);
 
   void drawCaret(const int x, const int y, const int h);
@@ -261,12 +263,22 @@ private:
   int framesPerSecond = 30;
   errorHandler fnError = nullptr;
   eventHandler fnEvents = nullptr;
+  Paint brush = Paint("white");
+  typedef std::list<std::unique_ptr<DisplayUnit>> DisplayUnitStorage;
+  DisplayUnitStorage DL = {};
+  DisplayUnitStorage::iterator itDL_Processed = DL.begin();
 
-  std::list<std::unique_ptr<DisplayUnit>> DL = {};
   std::atomic_flag DL_readwrite = ATOMIC_FLAG_INIT;
 
 #define DL_SPIN while (DL_readwrite.test_and_set(std::memory_order_acquire))
 #define DL_CLEAR DL_readwrite.clear(std::memory_order_release)
+
+  DisplayUnitCollection drawables = {};
+  std::atomic_flag drawables_readwrite = ATOMIC_FLAG_INIT;
+
+#define DRAWABLES_SPIN                                                         \
+  while (drawables_readwrite.test_and_set(std::memory_order_acquire))
+#define DRAWABLES_CLEAR drawables_readwrite.clear(std::memory_order_release)
 
   std::vector<eventHandler> onfocus = {};
   std::vector<eventHandler> onblur = {};

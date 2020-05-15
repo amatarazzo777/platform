@@ -30,6 +30,13 @@ class DRAWTEXT;
 class DRAWIMAGE;
 class DRAWAREA;
 class FUNCTION;
+class DisplayUnit;
+typedef std::list<DisplayUnit *> DisplayUnitCollection;
+
+class DisplayContext;
+typedef std::function<void(DisplayContext &context, double, double, double,
+                           double)>
+    DrawLogic;
 
 class CurrentUnits {
 public:
@@ -84,16 +91,20 @@ public:
 
     return *this;
   }
+  class CairoRegion;
+  typedef std::function<void(CairoRegion &)> RegionFunc;
+
   bool surfacePrime(void);
+  void plot(CairoRegion plotArea);
   void flush(void);
   void resizeSurface(const int w, const int h);
-  void iterate(std::function<void(cairo_rectangle_int_t &n)> fn);
-  void state(bool on, int x = 0, int y = 0, int w = 0, int h = 0);
+  void offsetPosition(const int x, const int y);
+  void collectables(DisplayUnitCollection *obj);
 
+  void iterate(RegionFunc fn);
+
+  void state(bool on, int x = 0, int y = 0, int w = 0, int h = 0);
   bool state(void);
-  typedef std::list<cairo_rectangle_t> RenderList;
-  cairo_region_overlap_t contains(const cairo_rectangle_int_t *rectangle,
-                                  RenderList &renderList);
 
   CurrentUnits currentUnits = CurrentUnits();
   void setUnit(AREA *_area) { currentUnits.area = _area; };
@@ -116,29 +127,20 @@ public:
   void setUnit(EVENT *_event) { currentUnits.event = _event; };
 
 public:
-  short windowX = 0;
-  short windowY = 0;
-  unsigned short windowWidth = 0;
-  unsigned short windowHeight = 0;
-  bool windowOpen = false;
-
-  cairo_t *cr = nullptr;
-
-private:
-  class Region {
+  class CairoRegion {
   public:
-    Region() = delete;
-    Region(int x, int y, int w, int h) {
+    CairoRegion() = delete;
+    CairoRegion(int x, int y, int w, int h) {
       rect = {x, y, w, h};
       _ptr = cairo_region_create_rectangle(&rect);
     }
-    Region(const Region &other) { *this = other; }
-    Region &operator=(const Region &other) {
+    CairoRegion(const CairoRegion &other) { *this = other; }
+    CairoRegion &operator=(const CairoRegion &other) {
       _ptr = cairo_region_reference(other._ptr);
       rect = other.rect;
       return *this;
     }
-    ~Region() {
+    ~CairoRegion() {
       if (_ptr)
         cairo_region_destroy(_ptr);
     }
@@ -147,9 +149,29 @@ private:
     bool eval = false;
   };
 
+public:
+  short windowX = 0;
+  short windowY = 0;
+  unsigned short windowWidth = 0;
+  unsigned short windowHeight = 0;
+  bool windowOpen = false;
+
+  cairo_t *cr = nullptr;
+  cairo_region_t *objectRegion = nullptr;
+  cairo_rectangle_int_t viewportRectangle = cairo_rectangle_int_t();
+  cairo_region_t *viewport = nullptr;
+  typedef std::unordered_map<std::size_t, DrawLogic>
+      AssociatedInkFN;
+  AssociatedInkFN inkedAreaAssociated = AssociatedInkFN();
+  typedef std::vector<cairo_rectangle_int_t *> InkedRects;
+  InkedRects inkedAreas = InkedRects();
+  std::size_t inkedAreasTotal = 0;
+  DisplayUnitCollection *collection=nullptr;
+  DisplayUnitCollection::iterator itcollection=DisplayUnitCollection::iterator();
+
 private:
-  std::list<Region> _regions = {};
-  typedef std::list<Region>::iterator RegionIter;
+  std::list<CairoRegion> _regions = {};
+  typedef std::list<CairoRegion>::iterator RegionIter;
 
   typedef std::tuple<int, int> _WH;
   std::list<_WH> _surfaceRequests = {};
@@ -164,6 +186,8 @@ private:
   while (lockSurfaceRequests.test_and_set(std::memory_order_acquire))
 #define SURFACE_REQUESTS_CLEAR                                                 \
   lockSurfaceRequests.clear(std::memory_order_release)
+
+  int offsetx = 0, offsety = 0;
 
 public:
 #if defined(__linux__)

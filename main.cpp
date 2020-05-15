@@ -201,12 +201,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // items may be inserted before window open
   // the information goes in but is not processed
   // until after window is open.
- draw(vis, 1);
-  //drawSimple(vis);
+  // draw(vis, 1);
+  drawSimple(vis);
   // drawSimple2(vis);
 
-  vis.openWindow("Information Title", 800, 600);
-
+  vis.openWindow("Information Title", 800, 600, Paint("orange"));
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
@@ -238,7 +237,7 @@ void drawSimple(platform &vis) {
   vis.textAlignment(alignment::left);
   // set the font name according to pango spi. see pango font description.
   vis.font("DejaVu Sans normal 24");
-  vis.textOutline("darkred",1);
+  vis.textOutline("darkred", 1);
   vis.textFill("red");
   vis.textShadow("black");
   // area is a rounded box 120,120 are the corner pixel sizes.
@@ -349,7 +348,8 @@ void draw(platform &vis, double dStep) {
   // pattern as well as the opaque and translucent color. colors can be provided
   // in 24bit, string and rgb component at 0-1 per channel. This is all due to
   // the cairo graphics api flexibility.
-  Paint tiger = Paint("/home/anthony/development/platform/image/23.svg", 50, 50);
+  Paint tiger =
+      Paint("/home/anthony/development/platform/image/23.svg", 50, 50);
   tiger.rotate(PI / 180 * 10);
   tiger.extend(extendType::reflect);
   tiger.filter(filterType::bilinear);
