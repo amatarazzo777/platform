@@ -262,9 +262,15 @@ bool uxdevice::Paint::create(void) {
  parse web formats
 
 linear-gradient(to bottom, #1e5799 0%,#2989d8 50%,#207cca 51%,#2989d8
-51%,#7db9e8 100%); linear-gradient(to right, #1e5799 0%,#2989d8 50%,#207cca
-51%,#2989d8 51%,#7db9e8 100%); linear-gradient(135deg, #1e5799 0%,#2989d8
-50%,#207cca 51%,#2989d8 51%,#7db9e8 100%); linear-gradient(45deg, #1e5799
+51%,#7db9e8 100%);
+
+linear-gradient(to right, #1e5799 0%,#2989d8 50%,#207cca
+51%,#2989d8 51%,#7db9e8 100%);
+
+linear-gradient(135deg, #1e5799 0%,#2989d8
+50%,#207cca 51%,#2989d8 51%,#7db9e8 100%);
+
+linear-gradient(45deg, #1e5799
 0%,#2989d8 50%,#207cca 51%,#2989d8 51%,#7db9e8 100%);
 
 radial-gradient(ellipse at center, #1e5799 0%,#2989d8 50%,#207cca

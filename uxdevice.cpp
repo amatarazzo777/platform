@@ -96,7 +96,7 @@ void uxdevice::platform::drawablesToReady(void) {
 If any items are on screen, it is rendered to the xcb surface..
 */
 void uxdevice::platform::exposeRegions(void) {
-  // DL_SPIN;
+
   // hides all drawing operations until pop to source.
   cairo_push_group(context.cr);
 
@@ -113,8 +113,6 @@ void uxdevice::platform::exposeRegions(void) {
 
     context.plot(r);
   });
-
-  // DL_CLEAR;
 
   // pop the draw group to the surface.
   cairo_pop_group_to_source(context.cr);

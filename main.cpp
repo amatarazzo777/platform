@@ -204,8 +204,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // until after window is open.
   draw(vis, 1);
   // drawSi(vis);
-  // drawSimple(vis);
-  // drawSimple2(vis);
+  //drawSimple(vis);
+  //drawSimple2(vis);
 
   vis.openWindow(
       "Information Title", 500, 600,
@@ -260,9 +260,9 @@ void drawSimple(platform &vis) {
   vis.textAlignment(alignment::left);
   // set the font name according to pango spi. see pango font description.
   vis.font("DejaVu Sans normal 24");
-  vis.textOutline("red", 1.5);
-  // vis.textFill("red");
-  vis.textShadow("orange", 3, 0, 0);
+  vis.textOutline("darkred", 1.5);
+  vis.textFill("red");
+  vis.textShadow("black", 5);
 
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
@@ -273,7 +273,7 @@ void drawSimple(platform &vis) {
   vis.textFillNone();
   vis.textOutlineNone();
 
-  vis.textShadow("black", 0);
+  vis.textShadow("black", 3);
   vis.font("DejaVu Sans normal 14");
   for (int i = 0; i < 20; i++) {
 

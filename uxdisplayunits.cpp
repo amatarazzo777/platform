@@ -266,9 +266,9 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
           if (setLayoutOptions(context))
             pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
-          textfill->emit(context.cr);
+          textfill->emit(context.cr, a.x, a.y, a.w, a.h);
           cairo_fill_preserve(context.cr);
-          textoutline->emit(context.cr);
+          textoutline->emit(context.cr, a.x, a.y, a.w, a.h);
           cairo_stroke(context.cr);
         };
         auto fnClipping = [=](DisplayContext &context) {
@@ -291,7 +291,7 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
           if (setLayoutOptions(context))
             pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
-          textfill->emit(context.cr);
+          textfill->emit(context.cr, a.x, a.y, a.w, a.h);
           cairo_fill(context.cr);
         };
         auto fnClipping = [=](DisplayContext &context) {
@@ -314,7 +314,7 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
           if (setLayoutOptions(context))
             pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
-          textoutline->emit(context.cr);
+          textoutline->emit(context.cr, a.x, a.y, a.w, a.h);
           cairo_stroke(context.cr);
         };
         auto fnClipping = [=](DisplayContext &context) {
@@ -341,7 +341,7 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
         cairo_move_to(context.cr, a.x, a.y);
         if (setLayoutOptions(context))
           pango_cairo_update_layout(context.cr, layout);
-        pen->emit(context.cr);
+        pen->emit(context.cr, a.x, a.y, a.w, a.h);
         pango_cairo_show_layout(context.cr, layout);
       };
       auto fnClipping = [=](DisplayContext &context) {
@@ -510,7 +510,7 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
     } else {
       fnadjustForStroke = [=](AREA &a) {};
       fnprolog = [=](DisplayContext &context) {
-        background->emit(context.cr);
+        background->emit(context.cr, bounds.x, bounds.y, bounds.w, bounds.h);
         cairo_fill(context.cr);
       };
     }
