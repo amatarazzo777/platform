@@ -23,13 +23,23 @@ for errors after invocation.
 */
 class DisplayUnit {
 public:
+  DisplayUnit() {}
   virtual ~DisplayUnit() {}
-  virtual void invoke(DisplayContext &context){};
+  DisplayUnit &operator=(const DisplayUnit &other) {
+    bprocessed = other.bprocessed;
+    viewportInked = other.viewportInked;
+    _serror = other._serror;
+    return *this;
+  }
+  DisplayUnit(const DisplayUnit &other) { *this = other; }
+  virtual void invoke(DisplayContext &context) {}
   virtual bool isOutput(void) { return false; }
-  void error(const char *s) {_serror=s;}
+  void error(const char *s) { _serror = s; }
   bool valid(void) { return _serror == nullptr; }
   bool isprocessed(void) { return bprocessed; }
+
   bool bprocessed = false;
+  bool viewportInked = false;
   const char *_serror = nullptr;
 };
 
@@ -40,17 +50,28 @@ the render work list to determine if a particular image is on screen.
 
 */
 
-class DrawingOutput {
+class DrawingOutput : public DisplayUnit {
 public:
+  typedef DisplayContext::CairoRegion CairoRegion;
   DrawingOutput(){};
   virtual ~DrawingOutput(){};
   bool hasInkExtents = false;
   cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
   cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
-  cairo_rectangle_int_t *inkExtents(void) { return &inkRectangle; }
+  void intersect(cairo_rectangle_t &r);
+  void intersect(CairoRegion &r);
+  cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
+  cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
+  cairo_rectangle_t _intersection = cairo_rectangle_t();
+  cairo_rectangle_t *inkExtents(void) { return &_inkRectangle; }
+  cairo_rectangle_t *intersectionExtents(void) { return &_intersection; }
+  void invoke(DisplayContext &context);
+  bool isOutput(void) { return true; }
   bool bCompleted = false;
-  bool visible(DisplayContext &context);
-  DrawLogic fnDraw=DrawLogic();
+  bool viewportInked = false;
+  DrawLogic fnDraw = DrawLogic();
+  DrawLogic fnDrawClipped = DrawLogic();
+  CairoOptionFn options = {};
 };
 
 class CLEARUNIT : public DisplayUnit {
@@ -76,7 +97,6 @@ public:
   void invoke(DisplayContext &context) {
     cairo_set_antialias(context.cr, setting);
     context.setUnit(this);
-    bprocessed = true;
   }
 
   cairo_antialias_t setting;
@@ -110,7 +130,6 @@ public:
   void invoke(DisplayContext &context) {
     cairoInkRectangle = {(int)x, (int)y, (int)w, (int)h};
     context.setUnit(this);
-    bprocessed = true;
   }
 };
 
@@ -119,10 +138,7 @@ public:
   STRING(const std::string &s) : data(s) {}
   ~STRING() {}
   std::string data;
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class FONT : public DisplayUnit {
@@ -150,7 +166,6 @@ public:
     if (!fontDescription)
       fontDescription = pango_font_description_from_string(description.data());
     context.setUnit(this);
-    bprocessed = true;
   }
 };
 
@@ -168,10 +183,7 @@ public:
       double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~PEN() {}
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class BACKGROUND : public DisplayUnit, public Paint {
@@ -189,10 +201,7 @@ public:
              double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~BACKGROUND() {}
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class ALIGN : public DisplayUnit {
@@ -201,10 +210,7 @@ public:
   ~ALIGN() {}
   void emit(PangoLayout *layout);
   alignment setting = alignment::left;
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class EVENT : public DisplayUnit {
@@ -212,10 +218,7 @@ public:
   EVENT(eventHandler _eh) : fn(_eh){};
   ~EVENT() {}
   eventHandler fn;
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class TEXTSHADOW : public DisplayUnit, public Paint {
@@ -245,10 +248,7 @@ public:
         y(yOffset) {}
 
   ~TEXTSHADOW() {}
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 
 public:
   unsigned short radius = 3;
@@ -285,10 +285,7 @@ public:
     cairo_set_line_width(cr, lineWidth);
   }
 
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 
 public:
   double lineWidth = .5;
@@ -310,10 +307,7 @@ public:
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
   ~TEXTFILL() {}
-  void invoke(DisplayContext &context) {
-    context.setUnit(this);
-    bprocessed = true;
-  }
+  void invoke(DisplayContext &context) { context.setUnit(this); }
 };
 
 class IMAGE : public DisplayUnit {
@@ -335,7 +329,7 @@ public:
   bool bIsSVG = false;
   bool bLoaded = false;
 };
-class DRAWTEXT : public DisplayUnit, public DrawingOutput {
+class DRAWTEXT : public DrawingOutput {
 public:
   DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
   DRAWTEXT(std::size_t _b, std::size_t _e)
@@ -344,22 +338,20 @@ public:
   DRAWTEXT &operator=(const DRAWTEXT &other) = delete;
   bool isOutput(void) { return true; }
   ~DRAWTEXT() {
-    if (textImage)
-      cairo_surface_destroy(textImage);
+    if (shadowImage)
+      cairo_surface_destroy(shadowImage);
 
     if (layout)
       g_object_unref(layout);
   }
   bool setLayoutOptions(DisplayContext &context);
-  void drawShadowOffscreen(DisplayContext &context);
-  void drawTextOffscreen(DisplayContext &context);
-
-  bool bTextImageCompleted = false;
+  void drawShadow(DisplayContext &context);
+  void createShadow(void);
 
   std::size_t beginIndex = 0;
   std::size_t endIndex = 0;
   bool bEntire = true;
-  cairo_surface_t *textImage = nullptr;
+  cairo_surface_t *shadowImage = nullptr;
   PangoLayout *layout = nullptr;
   PangoRectangle ink_rect = PangoRectangle();
   PangoRectangle logical_rect = PangoRectangle();
@@ -368,15 +360,16 @@ public:
   PEN *pen = nullptr;
   TEXTOUTLINE *textoutline = nullptr;
   TEXTFILL *textfill = nullptr;
+  TEXTSHADOW *textshadow = nullptr;
   AREA *area = nullptr;
   STRING *text = nullptr;
   FONT *font = nullptr;
+  ALIGN *align = nullptr;
 
   void invoke(DisplayContext &context);
-
 };
 
-class DRAWIMAGE : public DisplayUnit, public DrawingOutput {
+class DRAWIMAGE : public DrawingOutput {
 public:
   DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
   DRAWIMAGE(void) {}
@@ -384,38 +377,36 @@ public:
   DRAWIMAGE(const DRAWIMAGE &other) { *this = other; }
   DRAWIMAGE &operator=(const DRAWIMAGE &other) {
     area = other.area;
-    image= other.image;
+    image = other.image;
     return *this;
   }
 
   void invoke(DisplayContext &context);
-  bool isOutput(void) { return true; }
 
 private:
   AREA src = AREA();
   AREA *area = nullptr;
-  IMAGE *image=nullptr;
+  IMAGE *image = nullptr;
 
   bool bEntire = true;
 };
 
-class DRAWAREA : public DisplayUnit, public DrawingOutput {
+class DRAWAREA : public DrawingOutput {
 public:
   DRAWAREA() {}
   ~DRAWAREA() {}
   DRAWAREA(const DRAWAREA &other) { *this = other; }
   DRAWAREA &operator=(const DRAWAREA &other) {
     area = other.area;
-    background= other.background;
-    pen= other.pen;
+    background = other.background;
+    pen = other.pen;
     return *this;
   }
 
   void invoke(DisplayContext &context);
   AREA *area = nullptr;
-  BACKGROUND *background=nullptr;
-  PEN *pen=nullptr;
-
+  BACKGROUND *background = nullptr;
+  PEN *pen = nullptr;
 };
 
 /**
@@ -433,4 +424,13 @@ private:
   CAIRO_FUNCTION func;
 };
 
+typedef std::function<void(cairo_t *cr)> CAIRO_OPTION;
+class OPTION_FUNCTION : public DisplayUnit {
+public:
+  OPTION_FUNCTION(CAIRO_OPTION _func) : fnOption(_func) {}
+  ~OPTION_FUNCTION() {}
+  void invoke(DisplayContext &context);
+
+  CAIRO_OPTION fnOption;
+};
 } // namespace uxdevice

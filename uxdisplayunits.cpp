@@ -19,6 +19,50 @@ shading or texturing derive and publish the Paint class interface.
 */
 
 #include "uxdevice.hpp"
+void uxdevice::DrawingOutput::invoke(DisplayContext &context) {
+
+  for (auto &fn : options)
+    fn->fnOption(context.cr);
+}
+
+void uxdevice::DrawingOutput::intersect(cairo_rectangle_t &r) {
+  if (!hasInkExtents)
+    return;
+  cairo_rectangle_int_t rInt = {(int)r.x, (int)r.y, (int)r.width,
+                                (int)r.height};
+  cairo_region_t *rectregion = cairo_region_create_rectangle(&rInt);
+  overlap = cairo_region_contains_rectangle(rectregion, &inkRectangle);
+  if (overlap == CAIRO_REGION_OVERLAP_PART) {
+    cairo_region_t *dst = cairo_region_create_rectangle(&inkRectangle);
+    cairo_region_intersect(dst, rectregion);
+    cairo_region_get_extents(dst, &intersection);
+    _intersection = {(double)intersection.x, (double)intersection.y,
+                     (double)intersection.width, (double)intersection.height};
+    cairo_region_destroy(dst);
+  }
+  cairo_region_destroy(rectregion);
+}
+void uxdevice::DrawingOutput::intersect(CairoRegion &rectregion) {
+  if (!hasInkExtents)
+    return;
+
+  cairo_region_t *dst = cairo_region_create_rectangle(&inkRectangle);
+  cairo_region_intersect(dst, rectregion._ptr);
+  cairo_region_get_extents(dst, &intersection);
+  _intersection = {(double)intersection.x, (double)intersection.y,
+                   (double)intersection.width, (double)intersection.height};
+  cairo_region_destroy(dst);
+}
+
+void uxdevice::OPTION_FUNCTION::invoke(DisplayContext &context) {
+  auto optType = fnOption.target_type().hash_code();
+
+  context.currentUnits.options.remove_if([=](auto &n) {
+    return n->fnOption.target_type().hash_code() == optType;
+  });
+
+  context.currentUnits.options.push_back(this);
+}
 
 void uxdevice::AREA::shrink(double a) {
   switch (type) {
@@ -63,7 +107,7 @@ void uxdevice::ALIGN::emit(PangoLayout *layout) {
 
 /**
 \internal
-\brief The drawText function provides textual character rendering.
+\brief creates if need be and sets options that differ.
 */
 bool uxdevice::DRAWTEXT::setLayoutOptions(DisplayContext &context) {
   bool ret = false;
@@ -79,13 +123,11 @@ bool uxdevice::DRAWTEXT::setLayoutOptions(DisplayContext &context) {
   const PangoFontDescription *originalDescription =
       pango_layout_get_font_description(layout);
   if (!originalDescription ||
-      !pango_font_description_equal(originalDescription,
-                                    context.currentUnits.font->fontDescription))
-    pango_layout_set_font_description(
-        layout, context.currentUnits.font->fontDescription);
+      !pango_font_description_equal(originalDescription, font->fontDescription))
+    pango_layout_set_font_description(layout, font->fontDescription);
 
-  if (context.currentUnits.align) {
-    context.currentUnits.align->emit(layout);
+  if (align) {
+    align->emit(layout);
   }
 
   // set the width and height of the layout.
@@ -95,8 +137,8 @@ bool uxdevice::DRAWTEXT::setLayoutOptions(DisplayContext &context) {
   if (pango_layout_get_height(layout) != a.h * PANGO_SCALE)
     pango_layout_set_height(layout, a.h * PANGO_SCALE);
 
-  if (context.currentUnits.text->data.compare(
-          std::string_view(pango_layout_get_text(layout))) != 0)
+  std::string_view sinternal = std::string_view(pango_layout_get_text(layout));
+  if (text->data.compare(sinternal) != 0)
     pango_layout_set_text(layout, text->data.data(), -1);
 
   // any changes
@@ -104,13 +146,42 @@ bool uxdevice::DRAWTEXT::setLayoutOptions(DisplayContext &context) {
     pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
 
     inkRectangle = {(int)a.x, (int)a.y, logical_rect.width,
-                  logical_rect.height};
+                    logical_rect.height};
+    _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
+                     (double)inkRectangle.width, (double)inkRectangle.height};
+
+    hasInkExtents = true;
     ret = true;
   }
 
   return ret;
 }
 
+void uxdevice::DRAWTEXT::createShadow(void) {
+  if (!shadowImage) {
+    shadowImage = cairo_image_surface_create(
+        CAIRO_FORMAT_ARGB32, _inkRectangle.width + textshadow->x,
+        _inkRectangle.height + textshadow->y);
+    cairo_t *cr = cairo_create(shadowImage);
+    // offset text by the parameter amounts
+    cairo_move_to(cr, textshadow->x, textshadow->y);
+    pango_cairo_update_layout(cr, layout);
+    textshadow->emit(cr);
+
+    pango_cairo_show_layout(cr, layout);
+
+#if defined(USE_STACKBLUR)
+    blurImage(shadowImage, textshadow->radius);
+
+#elif defined(USE_SVGREN)
+    cairo_surface_t *blurred = blurImage(shadowImage, textshadow->radius);
+    cairo_surface_destroy(shadowImage);
+    shadowImage = blurred;
+#endif
+
+    cairo_destroy(cr);
+  }
+}
 
 /**
 \internal
@@ -124,24 +195,26 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
   pen = context.currentUnits.pen;
   textoutline = context.currentUnits.textoutline;
   textfill = context.currentUnits.textfill;
+  textshadow = context.currentUnits.textshadow;
   area = context.currentUnits.area;
   text = context.currentUnits.text;
   font = context.currentUnits.font;
+  align = context.currentUnits.align;
+  options = context.currentUnits.options;
 
   // check the context parameters before operating
   if (!(pen || textoutline || textfill) && (area && text && font)) {
-      const char *s = "A draw text object must include the following "
-                      "attributes. A pen or a textoutline or "
-                      " textfill. As well, an area, text and font";
-      error(s);
-      auto fn = [=](DisplayContext &context) {};
-      fnDraw = std::bind(fn, _1);
-    }
-  else {
+    const char *s = "A draw text object must include the following "
+                    "attributes. A pen or a textoutline or "
+                    " textfill. As well, an area, text and font";
+    error(s);
+    auto fn = [=](DisplayContext &context) {};
+    fnDraw = std::bind(fn, _1);
+  } else {
 
     setLayoutOptions(context);
 
-    // non using the path layout is faster
+    // not using the path layout is faster
     // these options change rendering and pango api usage
     bool bUsePathLayout = false;
     bool bOutline = false;
@@ -159,58 +232,100 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
       bUsePathLayout = true;
     }
 
+    DrawLogic fnShadow = DrawLogic();
+    if (textshadow) {
+      createShadow();
+      fnShadow = [=](DisplayContext &context) {
+        cairo_set_source_surface(context.cr, shadowImage, _inkRectangle.x,
+                                 _inkRectangle.y);
+        if (overlap == CAIRO_REGION_OVERLAP_IN)
+          cairo_rectangle(context.cr, _inkRectangle.x, _inkRectangle.y,
+                          _inkRectangle.width, _inkRectangle.height);
+
+        else if (overlap == CAIRO_REGION_OVERLAP_PART)
+          cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                          _intersection.width, _intersection.height);
+
+        cairo_fill(context.cr);
+      };
+    } else {
+      fnShadow = [=](DisplayContext &context) {};
+    }
+
     // set the drawing function
     if (bUsePathLayout) {
       // set the drawing function to the one that will be used by the rendering
-      // options for text.
+      // options for text. These functions accept five parameters.
+      // These are the clipping versions that have coordinates.
       if (bFilled && bOutline) {
-        auto fn = [=](DisplayContext &context, double x, double y, double w,
-                      double h) {
+        auto fn = [=](DisplayContext &context) {
           const AREA &a = *area;
-          cairo_rectangle(context.cr, x, y, w, h);
-          cairo_clip(context.cr);
+          DrawingOutput::invoke(context);
+          fnShadow(context);
           cairo_move_to(context.cr, a.x, a.y);
-          pango_cairo_update_layout(context.cr, layout);
+          if (setLayoutOptions(context))
+            pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
           textfill->emit(context.cr);
           cairo_fill_preserve(context.cr);
           textoutline->emit(context.cr);
           cairo_stroke(context.cr);
+        };
+        auto fnClipping = [=](DisplayContext &context) {
+          cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                          _intersection.width, _intersection.height);
+          cairo_clip(context.cr);
+          fn(context);
           cairo_reset_clip(context.cr);
         };
-        fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
+        fnDraw = std::bind(fn, _1);
+        fnDrawClipped = std::bind(fnClipping, _1);
 
         // text is only filled.
       } else if (bFilled) {
-        auto fn = [=](DisplayContext &context, double x, double y, double w,
-                      double h) {
+        auto fn = [=](DisplayContext &context) {
           const AREA &a = *area;
-          cairo_rectangle(context.cr, x, y, w, h);
-          cairo_clip(context.cr);
+          DrawingOutput::invoke(context);
+          fnShadow(context);
           cairo_move_to(context.cr, a.x, a.y);
-          pango_cairo_update_layout(context.cr, layout);
+          if (setLayoutOptions(context))
+            pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
           textfill->emit(context.cr);
           cairo_fill(context.cr);
+        };
+        auto fnClipping = [=](DisplayContext &context) {
+          cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                          _intersection.width, _intersection.height);
+          cairo_clip(context.cr);
+          fn(context);
           cairo_reset_clip(context.cr);
         };
-        fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
+        fnDraw = std::bind(fn, _1);
+        fnDrawClipped = std::bind(fnClipping, _1);
 
         // text is only outlined.
       } else if (bOutline) {
-        auto fn = [=](DisplayContext &context, double x, double y, double w,
-                      double h) {
+        auto fn = [=](DisplayContext &context) {
           const AREA &a = *area;
-          cairo_rectangle(context.cr, x, y, w, h);
-          cairo_clip(context.cr);
+          DrawingOutput::invoke(context);
+          fnShadow(context);
           cairo_move_to(context.cr, a.x, a.y);
-          pango_cairo_update_layout(context.cr, layout);
+          if (setLayoutOptions(context))
+            pango_cairo_update_layout(context.cr, layout);
           pango_cairo_layout_path(context.cr, layout);
           textoutline->emit(context.cr);
           cairo_stroke(context.cr);
+        };
+        auto fnClipping = [=](DisplayContext &context) {
+          cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                          _intersection.width, _intersection.height);
+          cairo_clip(context.cr);
+          fn(context);
           cairo_reset_clip(context.cr);
         };
-        fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
+        fnDraw = std::bind(fn, _1);
+        fnDrawClipped = std::bind(fnClipping, _1);
       }
 
     } else {
@@ -219,19 +334,25 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
       // fastest text display uses the function
       //  which uses the rasterizer of the font system
       //        --- see pango_cairo_show_layout
-      auto fn = [=](DisplayContext &context, double x, double y, double w,
-                    double h) {
+      auto fn = [=](DisplayContext &context) {
         const AREA &a = *area;
-        cairo_rectangle(context.cr, x, y, w, h);
-        cairo_clip(context.cr);
+        DrawingOutput::invoke(context);
+        fnShadow(context);
         cairo_move_to(context.cr, a.x, a.y);
-        pango_cairo_update_layout(context.cr, layout);
+        if (setLayoutOptions(context))
+          pango_cairo_update_layout(context.cr, layout);
         pen->emit(context.cr);
         pango_cairo_show_layout(context.cr, layout);
+      };
+      auto fnClipping = [=](DisplayContext &context) {
+        cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                        _intersection.width, _intersection.height);
+        cairo_clip(context.cr);
+        fn(context);
         cairo_reset_clip(context.cr);
       };
-
-      fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
+      fnDraw = std::bind(fn, _1);
+      fnDrawClipped = std::bind(fnClipping, _1);
     }
   }
   bprocessed = true;
@@ -270,35 +391,44 @@ void uxdevice::IMAGE::invoke(DisplayContext &context) {
 void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
   using namespace std::placeholders;
   DrawLogic fn;
+  DrawLogic fnClipping;
 
   area = context.currentUnits.area;
   image = context.currentUnits.image;
-
+  options = context.currentUnits.options;
   if (!(area && image)) {
     const char *err = "A draw text object must include the following "
                       "attributes. A pen or a textoutline or "
                       " textfill. As well, an area, text and font";
     error(err);
-    fn = [=](DisplayContext &context, double x, double y, double w, double h) {
-    };
 
   } else {
 
     // set the ink area.
-    const AREA &bounds = *area;
-    inkRectangle = {(int)bounds.x, (int)bounds.y, (int)bounds.w, (int)bounds.h};
+    const AREA &a = *area;
+    inkRectangle = {(int)a.x, (int)a.y, (int)a.w, (int)a.h};
+    _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
+                     (double)inkRectangle.width, (double)inkRectangle.height};
+    hasInkExtents = true;
     // set directly callable rendering function.
-    fn = [=](DisplayContext &context, double x, double y, double w, double h) {
-      cairo_rectangle(context.cr, x, y, w, h);
-      cairo_clip(context.cr);
-      cairo_set_source_surface(context.cr, image->_image, bounds.x, bounds.y);
-      cairo_rectangle(context.cr, bounds.x, bounds.y,bounds.w, bounds.h);
+    fn = [=](DisplayContext &context) {
+      DrawingOutput::invoke(context);
+      cairo_set_source_surface(context.cr, image->_image, a.x, a.y);
+      cairo_rectangle(context.cr, a.x, a.y, a.w, a.h);
       cairo_fill(context.cr);
+    };
+    fnClipping = [=](DisplayContext &context) {
+      cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                      _intersection.width, _intersection.height);
+      cairo_clip(context.cr);
+      fn(context);
       cairo_reset_clip(context.cr);
     };
   }
 
-  fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
+  fnDraw = std::bind(fn, _1);
+  fnDrawClipped = std::bind(fnClipping, _1);
+
   bprocessed = true;
 }
 
@@ -312,6 +442,7 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
   area = context.currentUnits.area;
   background = context.currentUnits.background;
   pen = context.currentUnits.pen;
+  options = context.currentUnits.options;
 
   // check the context before operating
   if (!(area && (background || pen))) {
@@ -319,9 +450,6 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
         "The draw area command requires an area to be defined. As well"
         "a background, or a pen.";
     error(s);
-    auto fn = [=](DisplayContext &context, double x, double y, double w, double h) {};
-    fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
-
   } else {
 
     // set the ink area.
@@ -351,31 +479,39 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
 
       break;
     }
+    _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
+                     (double)inkRectangle.width, (double)inkRectangle.height};
     hasInkExtents = true;
 
     // no outline or fill defined, therefore Displaythe pen is used.
     std::function<void(DisplayContext & context)> fnprolog;
+    std::function<void(AREA & a)> fnadjustForStroke;
 
     // set the directly callable rendering function
     if (background && pen) {
+      fnadjustForStroke = [=](AREA &a) {
+        a.shrink(cairo_get_line_width(context.cr) / 2);
+      };
       fnprolog = [=](DisplayContext &context) {
         background->emit(context.cr, bounds.x, bounds.y, bounds.w, bounds.h);
         cairo_fill_preserve(context.cr);
         pen->emit(context.cr);
         cairo_stroke(context.cr);
-        cairo_reset_clip(context.cr);
       };
     } else if (pen) {
+      fnadjustForStroke = [=](AREA &a) {
+        a.shrink(cairo_get_line_width(context.cr));
+      };
+
       fnprolog = [=](DisplayContext &context) {
         pen->emit(context.cr);
         cairo_stroke(context.cr);
-        cairo_reset_clip(context.cr);
       };
     } else {
+      fnadjustForStroke = [=](AREA &a) {};
       fnprolog = [=](DisplayContext &context) {
         background->emit(context.cr);
         cairo_fill(context.cr);
-        cairo_reset_clip(context.cr);
       };
     }
 
@@ -383,24 +519,32 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
     case areaType::none:
       break;
     case areaType::rectangle: {
-      auto fn = [=](DisplayContext &context, double x, double y, double w,
-                    double h) {
-        const AREA &a = *area;
-        cairo_rectangle(context.cr, x, y, w, h);
-        cairo_clip(context.cr);
+      auto fn = [=](DisplayContext &context) {
+        AREA a = *area;
+        DrawingOutput::invoke(context);
+        fnadjustForStroke(a);
         cairo_rectangle(context.cr, a.x, a.y, a.w, a.h);
         fnprolog(context);
       };
-      fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
-
-      }break;
-    case areaType::roundedRectangle: {
-      auto fn = [=](DisplayContext &context, double x, double y, double w,
-                    double h) {
-        // derived  from svgren by Ivan Gagis <igagis@gmail.com>
-        const AREA &a = *area;
-        cairo_rectangle(context.cr, x, y, w, h);
+      auto fnClipping = [=](DisplayContext &context) {
+        DrawingOutput::invoke(context);
+        cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                        _intersection.width, _intersection.height);
         cairo_clip(context.cr);
+        fn(context);
+        fnprolog(context);
+        cairo_reset_clip(context.cr);
+      };
+      fnDraw = std::bind(fn, _1);
+      fnDrawClipped = std::bind(fnClipping, _1);
+
+    } break;
+    case areaType::roundedRectangle: {
+      auto fn = [=](DisplayContext &context) {
+        // derived  from svgren by Ivan Gagis <igagis@gmail.com>
+        AREA a = *area;
+        DrawingOutput::invoke(context);
+        fnadjustForStroke(a);
 
         cairo_move_to(context.cr, a.x + a.rx, a.y);
         cairo_line_to(context.cr, a.x + a.w - a.rx, a.y);
@@ -439,29 +583,43 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
         fnprolog(context);
       };
 
-      fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
-      }break;
-    case areaType::circle:{
-      auto fn = [=](DisplayContext &context, double x, double y, double w,
-                    double h) {
-        const AREA &a = *area;
-        cairo_rectangle(context.cr, x, y, w, h);
+      auto fnClipping = [=](DisplayContext &context) {
+        DrawingOutput::invoke(context);
+        cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                        _intersection.width, _intersection.height);
         cairo_clip(context.cr);
-
+        fn(context);
+        fnprolog(context);
+        cairo_reset_clip(context.cr);
+      };
+      fnDraw = std::bind(fn, _1);
+      fnDrawClipped = std::bind(fnClipping, _1);
+    } break;
+    case areaType::circle: {
+      auto fn = [=](DisplayContext &context) {
+        AREA a = *area;
+        DrawingOutput::invoke(context);
+        fnadjustForStroke(a);
         cairo_new_sub_path(context.cr);
         cairo_arc(context.cr, a.x + a.rx, a.y + a.rx, a.rx, 0., 2 * PI);
         cairo_close_path(context.cr);
         fnprolog(context);
       };
-      fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
-      }break;
-    case areaType::ellipse:{
-      auto fn = [=](DisplayContext &context, double x, double y, double w,
-                    double h) {
-        const AREA &a = *area;
-        cairo_rectangle(context.cr, x, y, w, h);
+      auto fnClipping = [=](DisplayContext &context) {
+        cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                        _intersection.width, _intersection.height);
         cairo_clip(context.cr);
-
+        fn(context);
+        cairo_reset_clip(context.cr);
+      };
+      fnDraw = std::bind(fn, _1);
+      fnDrawClipped = std::bind(fnClipping, _1);
+    } break;
+    case areaType::ellipse: {
+      auto fn = [=](DisplayContext &context) {
+        AREA a = *area;
+        DrawingOutput::invoke(context);
+        fnadjustForStroke(a);
         cairo_save(context.cr);
         cairo_translate(context.cr, a.x + a.rx / 2., a.y + a.ry / 2.);
         cairo_scale(context.cr, a.rx / 2., a.ry / 2.);
@@ -471,8 +629,17 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
         cairo_restore(context.cr);
         fnprolog(context);
       };
-      fnDraw = std::bind(fn, _1, _2, _3, _4, _5);
-      } break;
+      auto fnClipping = [=](DisplayContext &context) {
+        cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                        _intersection.width, _intersection.height);
+        cairo_clip(context.cr);
+        fn(context);
+        cairo_reset_clip(context.cr);
+      };
+      fnDraw = std::bind(fn, _1);
+      fnDrawClipped = std::bind(fnClipping, _1);
+
+    } break;
     }
   }
 

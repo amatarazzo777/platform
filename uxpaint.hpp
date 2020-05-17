@@ -60,6 +60,22 @@ public:
     _description = other._description;
 
     _gradientType = other._gradientType;
+
+    // linear gradient pattern space coordinates
+    _x0 = other._x0;
+    _y0 = other._y0;
+    _x1 = other._x1;
+    _y1 = other._y1;
+    ;
+
+    // radial gradient pattern space coordinates
+    _cx0 = other._cx0;
+    _cy0 = other._cy0;
+    _radius0 = other._radius0;
+    _cx1 = other._cx1;
+    _cy1 = other._cy1;
+    _radius1 = other._radius1;
+
     _width = other._width;
     _height = other._height;
     _stops = other._stops;

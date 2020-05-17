@@ -66,17 +66,21 @@ void uxdevice::platform::drawablesToReady(void) {
   DL_SPIN;
   // process the display list
   // moving render objects
-  itDL_Processed=std::find_if(DL.begin(),DL.end(), [](std::unique_ptr<DisplayUnit> &n) {
-                              return n->bprocessed==false;
-  });
+  if (DL.size() == 0)
+    return;
+
+  itDL_Processed =
+      std::find_if(DL.begin(), DL.end(), [](std::unique_ptr<DisplayUnit> &n) {
+        return n->bprocessed == false;
+      });
 
   while (itDL_Processed != DL.end()) {
-    auto &n=*(*itDL_Processed).get();
+    auto &n = *(*itDL_Processed).get();
     n.invoke(context);
     if (n.isOutput()) {
       drawables.push_back(itDL_Processed->get());
     }
-
+    n.bprocessed = true;
     itDL_Processed++;
   }
 
@@ -92,7 +96,7 @@ void uxdevice::platform::drawablesToReady(void) {
 If any items are on screen, it is rendered to the xcb surface..
 */
 void uxdevice::platform::exposeRegions(void) {
-  DL_SPIN;
+  // DL_SPIN;
   // hides all drawing operations until pop to source.
   cairo_push_group(context.cr);
 
@@ -102,7 +106,6 @@ void uxdevice::platform::exposeRegions(void) {
   // paint dispatch event. When the window is opened
   // render work will contain entire window
   context.iterate([=](auto &r) {
-    brush.translate(r.rect.x, r.rect.y);
     brush.emit(context.cr);
     cairo_rectangle(context.cr, r.rect.x, r.rect.y, r.rect.width,
                     r.rect.height);
@@ -111,7 +114,7 @@ void uxdevice::platform::exposeRegions(void) {
     context.plot(r);
   });
 
-  DL_CLEAR;
+  // DL_CLEAR;
 
   // pop the draw group to the surface.
   cairo_pop_group_to_source(context.cr);
@@ -305,7 +308,8 @@ uxdevice::platform::~platform() {
 */
 void uxdevice::platform::openWindow(const std::string &sWindowTitle,
                                     const unsigned short width,
-                                    const unsigned short height, Paint background) {
+                                    const unsigned short height,
+                                    Paint background) {
 
   context.windowWidth = width;
   context.windowHeight = height;
@@ -1422,9 +1426,9 @@ void uxdevice::platform::userDistance(double &x, double &y) {
 void uxdevice::platform::cap(lineCap c) {
   using namespace std::placeholders;
   DL_SPIN;
-  CAIRO_FUNCTION func =
+  CAIRO_OPTION func =
       std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1436,7 +1440,7 @@ void uxdevice::platform::join(lineJoin j) {
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1447,7 +1451,7 @@ void uxdevice::platform::lineWidth(double dWidth) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1458,7 +1462,7 @@ void uxdevice::platform::miterLimit(double dLimit) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1471,7 +1475,7 @@ void uxdevice::platform::dashes(const std::vector<double> &dashes,
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1482,7 +1486,7 @@ void uxdevice::platform::tollerance(double _t) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1494,7 +1498,7 @@ void uxdevice::platform::op(op_t _op) {
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 
@@ -1506,7 +1510,7 @@ void uxdevice::platform::source(Paint &p) {
   DL_SPIN;
   auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
   CAIRO_FUNCTION func = std::bind(fn, _1, p);
-  DL.push_back(make_unique<FUNCTION>(func));
+  DL.push_back(make_unique<OPTION_FUNCTION>(func));
   DL_CLEAR;
 }
 

@@ -8,6 +8,7 @@ void draw(platform &vm, double dStep);
 void drawUpdate(platform &vm, double dStep);
 void drawSimple(platform &vis);
 void drawSimple2(platform &vis);
+void drawSi(platform &vis);
 
 void testStart(string_view sFunc) {
 #if defined(CONSOLE)
@@ -201,25 +202,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // items may be inserted before window open
   // the information goes in but is not processed
   // until after window is open.
-  // draw(vis, 1);
-  drawSimple(vis);
+  draw(vis, 1);
+  // drawSi(vis);
+  // drawSimple(vis);
   // drawSimple2(vis);
 
-  vis.openWindow("Information Title", 800, 600, Paint("orange"));
+  vis.openWindow(
+      "Information Title", 500, 600,
+      Paint(0, 0, 600, 0, {{"red"}, {"orange"}, {"green"}, {"blue"}}));
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
   // when the user closes the window, the switch will be false
   double dStep = 1;
   while (vis.processing()) {
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 10; i++) {
       // drawUpdate(vis, dStep);
       dStep = dStep + .1;
       if (dStep > 2)
         dStep = 1;
     }
     // sleep for some time to not take over cpu,
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
   }
 
   return 0;
@@ -230,6 +234,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 // focus input.
 void eventDispatch(const event &evt) {}
 
+void drawSi(platform &vis) {
+
+  vis.antiAlias(antialias::subPixel);
+
+  vis.textAlignment(alignment::left);
+  // set the font name according to pango spi. see pango font description.
+  vis.font("DejaVu Sans normal 34");
+  vis.textOutline("darkred", 1);
+  vis.textFill("red");
+  // vis.textShadow("black");
+  // area is a rounded box 120,120 are the corner pixel sizes.
+  // rectangle is x-0,y=0 width=800, height = 600
+  vis.area(0, 0, 800, 500, 120, 120);
+  vis.text(
+      "The glistening oil coats upon the ravens are a remark of healthiness. "
+      "One that is pronounced during the day and in the moonlight. ");
+  vis.drawText();
+}
+
 void drawSimple(platform &vis) {
 
   vis.antiAlias(antialias::subPixel);
@@ -237,21 +260,26 @@ void drawSimple(platform &vis) {
   vis.textAlignment(alignment::left);
   // set the font name according to pango spi. see pango font description.
   vis.font("DejaVu Sans normal 24");
-  vis.textOutline("darkred", 1);
-  vis.textFill("red");
-  vis.textShadow("black");
+  vis.textOutline("red", 1.5);
+  // vis.textFill("red");
+  vis.textShadow("orange", 3, 0, 0);
+
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
   vis.area(0, 0, 800, 300, 120, 120);
   vis.text("The sun sets casting its refraction upon the mountain side. ");
   vis.drawText();
 
+  vis.textFillNone();
+  vis.textOutlineNone();
+
+  vis.textShadow("black", 0);
   vis.font("DejaVu Sans normal 14");
   for (int i = 0; i < 20; i++) {
 
-    vis.area(0, 100 + i * 22, 100, 28, 10, 10);
+    vis.area(0, 100 + i * 39, 100, 28, 10, 10);
     vis.text("scroll ");
-    vis.background(0, 0, 0, 100, {{"yellow"}, {"goldenrod"}});
+    vis.background(0, 0, 0, 100, {{"yellow"}, {.4, "darkbrown"}});
     vis.pen("white");
     vis.drawArea();
     vis.save();
@@ -281,7 +309,7 @@ void drawSimple2(platform &vis) {
   // linear gradient, rgb (0 - 1) provided., or can use
   //  red, green, blue , and alpha
   vis.pen(0, 0, 0, 100, {{"yellow"}, {"green"}, {"orange"}, {"blue"}});
-  vis.lineWidth(3);
+  vis.lineWidth(13);
   vis.drawArea();
 
   // circle
@@ -335,7 +363,7 @@ void draw(platform &vis, double dStep) {
       "home.");
 
   // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans Bold 14");
+  vis.font("DejaVu Sans Bold 24");
 
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
@@ -364,7 +392,7 @@ void draw(platform &vis, double dStep) {
   vis.background(Paint(.3, .3, .3, .7));
   vis.drawArea();
 
-  vis.pen("aqua");
+  vis.textFill(0, 0, 300, 0, {{"yellow"}, {"purple"}});
   vis.textShadow("grey");
   vis.drawText();
 
@@ -473,7 +501,7 @@ void draw(platform &vis, double dStep) {
   vis.translate(0, 400);
   // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
   // gradient TEXT
-  vis.area(0, 0, 300, 300);
+  vis.area(0, 400, 300, 300);
   vis.text("Text Gradient");
   vis.textFill(
       0, 0, 300, 300,

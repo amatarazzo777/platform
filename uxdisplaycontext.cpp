@@ -18,7 +18,7 @@ bool uxdevice::DisplayContext::surfacePrime() {
     SURFACE_REQUESTS_CLEAR;
     return state();
   }
-
+  // processing surface requests
   auto flat = _surfaceRequests.back();
   _surfaceRequests.clear();
   SURFACE_REQUESTS_CLEAR;
@@ -85,8 +85,10 @@ void uxdevice::DisplayContext::resizeSurface(const int w, const int h) {
 void uxdevice::DisplayContext::iterate(RegionFunc fn) {
   REGIONS_SPIN;
 
-  for (auto &it : _regions)
+  for (auto &it : _regions) {
     fn(it);
+    it.eval = true;
+  }
 
   REGIONS_CLEAR;
 }
@@ -110,8 +112,23 @@ bool uxdevice::DisplayContext::state(void) {
   REGIONS_SPIN;
 
   if (!_regions.empty())
-    for (auto it : _regions)
+    for (auto &it : _regions)
       if (!it.eval) {
+        DrawingOutputCollection::iterator obj = viewportOff.begin();
+        while (obj != viewportOff.end()) {
+          DrawingOutput *n = *obj;
+          n->intersect(it._rect);
+          if (n->overlap != CAIRO_REGION_OVERLAP_OUT) {
+            DrawingOutputCollection::iterator next = obj;
+            next++;
+
+            viewportOn.push_back(n);
+            viewportOff.erase(obj);
+            obj = next;
+          } else {
+            obj++;
+          }
+        }
         ret = true;
         break;
       }
@@ -126,42 +143,28 @@ bool uxdevice::DisplayContext::state(void) {
 
 */
 void uxdevice::DisplayContext::collectables(DisplayUnitCollection *obj) {
+  // first time will not be set, so start at the beginning of the list
+  if (collection == nullptr)
+    itunitCollectables = obj->begin();
   collection = obj;
-  viewportRectangle = {offsetx, offsety, offsetx + windowWidth,
-                       offsety + windowHeight};
-  if (!viewport)
-    viewport = cairo_region_create_rectangle(&viewportRectangle);
 
-  // first time or regenerate
-  if (!objectRegion) {
-    for (auto unit : *collection) {
-      DrawingOutput &n=*dynamic_cast<DrawingOutput *>(unit);
-      inkedAreas.push_back(n.inkExtents());
-      std::size_t loc = reinterpret_cast<std::size_t>(inkedAreas.back());
-      inkedAreaAssociated[loc] = n.fnDraw;
+  viewportRectangle = {(double)offsetx, (double)offsety,
+                       (double)offsetx + (double)windowWidth,
+                       (double)offsety + (double)windowHeight};
+
+  itunitCollectables =
+      std::find_if(itunitCollectables, collection->end(),
+                   [](DisplayUnit *&n) { return n->viewportInked == false; });
+  while (itunitCollectables != collection->end()) {
+    DrawingOutput *n = dynamic_cast<DrawingOutput *>(*itunitCollectables);
+    n->intersect(viewportRectangle);
+    if (n->overlap == CAIRO_REGION_OVERLAP_OUT) {
+      viewportOff.push_back(n);
+    } else {
+      viewportOn.push_back(n);
     }
-
-    objectRegion =
-        cairo_region_create_rectangles(*inkedAreas.data(), inkedAreas.size());
-
-    cairo_region_intersect(viewport, objectRegion);
-    inkedAreasTotal = collection->size();
-    itcollection = collection->end();
-  } else {
-
-    while (itcollection != collection->end()) {
-      DrawingOutput &n=*dynamic_cast<DrawingOutput *>(*itcollection);
-      cairo_rectangle_int_t *r=n.inkExtents();
-      inkedAreas.push_back(r);
-      std::size_t loc = reinterpret_cast<std::size_t>(r);
-      inkedAreaAssociated[loc] = n.fnDraw;
-
-      cairo_region_union_rectangle(objectRegion,r);
-      cairo_region_xor_rectangle(viewport, r);
-
-      itcollection++;
-    }
-    inkedAreasTotal = collection->size();
+    n->viewportInked = true;
+    itunitCollectables++;
   }
 }
 
@@ -170,29 +173,20 @@ void uxdevice::DisplayContext::collectables(DisplayUnitCollection *obj) {
  the rectangle is within the region.
 
 */
-void uxdevice::DisplayContext::plot(CairoRegion plotArea) {
+void uxdevice::DisplayContext::plot(CairoRegion &plotArea) {
 
-  // used to store
-  cairo_region_t *dst = cairo_region_copy(viewport);
-
-  // compute rectangles, values are uploaded through ptr
-  cairo_region_intersect(dst, plotArea._ptr);
-
-  if (!cairo_region_is_empty(dst)) {
-    int numIntersects = cairo_region_num_rectangles(dst);
-    for (int nth = 0; nth < numIntersects; nth++) {
-      cairo_rectangle_int_t rectangle;
-      cairo_region_get_rectangle(dst, nth, &rectangle);
-      std::size_t key = reinterpret_cast<std::size_t>(&rectangle);
-      AssociatedInkFN::iterator itfn = inkedAreaAssociated.find(key);
-      if(itfn != inkedAreaAssociated.end()) {
-        DrawLogic &fn = itfn->second;
-        fn(*this, (double)rectangle.x, (double)rectangle.y,
-               (double)rectangle.width, (double)rectangle.height);
-      }
+  for (auto &unit : viewportOn) {
+    DrawingOutput *n = dynamic_cast<DrawingOutput *>(unit);
+    n->intersect(plotArea._rect);
+    switch (n->overlap) {
+    case CAIRO_REGION_OVERLAP_OUT:
+      break;
+    case CAIRO_REGION_OVERLAP_IN: {
+      n->fnDraw(*this);
+    } break;
+    case CAIRO_REGION_OVERLAP_PART: {
+      n->fnDrawClipped(*this);
+    } break;
     }
   }
-
-
-  return;
 }
