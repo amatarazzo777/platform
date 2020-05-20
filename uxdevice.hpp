@@ -241,7 +241,7 @@ private:
   void exposeRegions(void);
   void drawablesToReady(void);
   void dispatchEvent(const event &e);
-
+  void dispatchEventLock(bool b);
   void drawCaret(const int x, const int y, const int h);
 
   void messageLoop(void);

@@ -21,7 +21,6 @@ bool uxdevice::DisplayContext::surfacePrime() {
   // processing surface requests
   auto flat = _surfaceRequests.back();
   _surfaceRequests.clear();
-  SURFACE_REQUESTS_CLEAR;
 
   cairo_surface_flush(xcbSurface);
   cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat), std::get<1>(flat));
@@ -31,7 +30,7 @@ bool uxdevice::DisplayContext::surfacePrime() {
   // surface requests processed, now
   // determine if painting should also occur
   bRet = state();
-
+  SURFACE_REQUESTS_CLEAR;
 #elif defined(_WIN64)
 
   // get the size of the window
@@ -76,31 +75,65 @@ void uxdevice::DisplayContext::flush() {
 }
 
 void uxdevice::DisplayContext::resizeSurface(const int w, const int h) {
-  SURFACE_REQUESTS_SPIN;
-  _surfaceRequests.push_back(std::make_tuple(w, h));
 
-  SURFACE_REQUESTS_CLEAR;
+  _surfaceRequests.push_back(std::make_tuple(w, h));
+}
+void uxdevice::DisplayContext::lock(bool b) {
+  if (b) {
+    SURFACE_REQUESTS_SPIN;
+  } else {
+
+    SURFACE_REQUESTS_CLEAR;
+  }
 }
 
 void uxdevice::DisplayContext::iterate(RegionFunc fn) {
+  SURFACE_REQUESTS_SPIN;
+
   REGIONS_SPIN;
-
-  for (auto &it : _regions) {
-    fn(it);
-    it.eval = true;
-  }
-
+  std::size_t cnt = _regions.size();
+  auto it = _regions.begin();
   REGIONS_CLEAR;
+
+  // processing surface requests
+  if (!_surfaceRequests.empty()) {
+    auto flat = _surfaceRequests.back();
+    _surfaceRequests.clear();
+
+    cairo_surface_flush(xcbSurface);
+    cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat),
+                               std::get<1>(flat));
+    windowWidth = std::get<0>(flat);
+    windowHeight = std::get<1>(flat);
+  }
+  SURFACE_REQUESTS_CLEAR;
+
+  std::cout << _regions.size() << ", {";
+
+  while (cnt) {
+std::cout << it->rect.x << ", "<< it->rect.y << ", "<< it->rect.width << ", "<< it->rect.height << "}  ";
+
+    fn(*it);
+    it->eval = true;
+    it++;
+    cnt--;
+  }
+  std::cout << std::endl << std::flush;
+
 }
 
 void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
   REGIONS_SPIN;
-  if (on)
+
+  if (on) {
     _regions.push_back(CairoRegion{x, y, w, h});
-  else {
+
+  } else {
+
     while (!_regions.empty()) {
-      if (!_regions.front().eval)
+      if (!_regions.front().eval) {
         break;
+      }
       _regions.pop_front();
     }
   }
@@ -108,9 +141,8 @@ void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
 }
 
 bool uxdevice::DisplayContext::state(void) {
-  bool ret = false;
   REGIONS_SPIN;
-
+  bool ret = false;
   if (!_regions.empty())
     for (auto &it : _regions)
       if (!it.eval) {
@@ -129,6 +161,7 @@ bool uxdevice::DisplayContext::state(void) {
             obj++;
           }
         }
+
         ret = true;
         break;
       }
@@ -155,6 +188,7 @@ void uxdevice::DisplayContext::collectables(DisplayUnitCollection *obj) {
   itunitCollectables =
       std::find_if(itunitCollectables, collection->end(),
                    [](DisplayUnit *&n) { return n->viewportInked == false; });
+
   while (itunitCollectables != collection->end()) {
     DrawingOutput *n = dynamic_cast<DrawingOutput *>(*itunitCollectables);
     n->intersect(viewportRectangle);
@@ -169,7 +203,7 @@ void uxdevice::DisplayContext::collectables(DisplayUnitCollection *obj) {
 }
 
 /**
- \details Routine iterates each of the render work regions and tests if
+ \details Routine iterates each of objects that draw and tests if
  the rectangle is within the region.
 
 */

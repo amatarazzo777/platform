@@ -19,16 +19,13 @@ using namespace uxdevice;
 \brief The routine is the main rendering thread. The thread runs
 at specific intervals. Locks are placed on the surface and
 rectangle list. The surface may change due to user resizing the gui
-window so a mutex is used to accommodate the functionality. That is
+window so a spin flag is used to accommodate the functionality. That is
 drawing cannot occur on the graphical while the surface is being resized.
-The mutex with the lock_guard is how this is done.
 */
 void uxdevice::platform::renderLoop(void) {
   while (bProcessing) {
 
     // measure processing time
-    static std::chrono::system_clock::time_point lastTime =
-        std::chrono::high_resolution_clock::now();
     std::chrono::system_clock::time_point start =
         std::chrono::high_resolution_clock::now();
 
@@ -39,24 +36,20 @@ void uxdevice::platform::renderLoop(void) {
     // of the paint event. As well, the underlying surface may
     // need to be resized. This function acquires locks on these
     // small lists for the multi-threaded necessity.
-    if (context.surfacePrime()) {
+    // searches for unready and syncs display context
 
-      // searches for unready and syncs display context
+    while (context.surfacePrime()) {
       drawablesToReady();
-
       // paints the regions
       exposeRegions();
-
       // blits the surface and xcb connection.
       context.flush();
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> diff = end - start;
-    // cout << diff.count() << std::endl << std::flush;
 
-    lastTime = std::chrono::high_resolution_clock::now();
-    size_t sleepAmount = 1000 / framesPerSecond;
+    size_t sleepAmount = 1000 / framesPerSecond - diff.count();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(sleepAmount));
   }
@@ -83,11 +76,10 @@ void uxdevice::platform::drawablesToReady(void) {
     n.bprocessed = true;
     itDL_Processed++;
   }
+  DL_CLEAR;
 
   // inform display context about new drawing
   context.collectables(&drawables);
-
-  DL_CLEAR;
 }
 
 /**
@@ -97,27 +89,28 @@ If any items are on screen, it is rendered to the xcb surface..
 */
 void uxdevice::platform::exposeRegions(void) {
 
-  // hides all drawing operations until pop to source.
-  cairo_push_group(context.cr);
-
   // rectangle of area needs painting background first.
   // these are subareas perhaps multiples exist because of resize
   // coordinates. The information is generated from the
   // paint dispatch event. When the window is opened
   // render work will contain entire window
   context.iterate([=](auto &r) {
+    // hides all drawing operations until pop to source.
+    cairo_push_group(context.cr);
+
     brush.emit(context.cr);
     cairo_rectangle(context.cr, r.rect.x, r.rect.y, r.rect.width,
                     r.rect.height);
     cairo_fill(context.cr);
 
     context.plot(r);
+    // pop the draw group to the surface.
+    cairo_pop_group_to_source(context.cr);
+    cairo_paint(context.cr);
   });
-
-  // pop the draw group to the surface.
-  cairo_pop_group_to_source(context.cr);
-  cairo_paint(context.cr);
 }
+
+void uxdevice::platform::dispatchEventLock(bool b) { context.lock(b); }
 
 /*
 \brief the dispatch routine is invoked by the messageLoop.
@@ -729,80 +722,97 @@ void uxdevice::platform::messageLoop(void) {
                       (*reply).atom, 4, 32, 1, &(*reply2).atom);
 
   // process Message queue
+  std::list<xcb_generic_event_t *> xcbEvents;
   while (bProcessing && (xcbEvent = xcb_wait_for_event(context.connection))) {
-    switch (xcbEvent->response_type & ~0x80) {
-    case XCB_MOTION_NOTIFY: {
-      xcb_motion_notify_event_t *motion = (xcb_motion_notify_event_t *)xcbEvent;
-      dispatchEvent(event{
-          eventType::mousemove,
-          (short)motion->event_x,
-          (short)motion->event_y,
-      });
-    } break;
-    case XCB_BUTTON_PRESS: {
-      xcb_button_press_event_t *bp = (xcb_button_press_event_t *)xcbEvent;
-      if (bp->detail == XCB_BUTTON_INDEX_4 ||
-          bp->detail == XCB_BUTTON_INDEX_5) {
-        dispatchEvent(
-            event{eventType::wheel, (short)bp->event_x, (short)bp->event_y,
-                  (short)(bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1)});
+    xcbEvents.push_back(xcbEvent);
+    while (bProcessing &&
+           (xcbEvent = xcb_poll_for_queued_event(context.connection)))
+      xcbEvents.push_back(xcbEvent);
 
-      } else {
-        dispatchEvent(event{eventType::mousedown, (short)bp->event_x,
-                            (short)bp->event_y, (short)bp->detail});
+    // lock
+    // dispatchEventLock(true);
+
+    while (!xcbEvents.empty()) {
+      xcbEvent = xcbEvents.front();
+      switch (xcbEvent->response_type & ~0x80) {
+      case XCB_MOTION_NOTIFY: {
+        xcb_motion_notify_event_t *motion =
+            (xcb_motion_notify_event_t *)xcbEvent;
+        dispatchEvent(event{
+            eventType::mousemove,
+            (short)motion->event_x,
+            (short)motion->event_y,
+        });
+      } break;
+      case XCB_BUTTON_PRESS: {
+        xcb_button_press_event_t *bp = (xcb_button_press_event_t *)xcbEvent;
+        if (bp->detail == XCB_BUTTON_INDEX_4 ||
+            bp->detail == XCB_BUTTON_INDEX_5) {
+          dispatchEvent(
+              event{eventType::wheel, (short)bp->event_x, (short)bp->event_y,
+                    (short)(bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1)});
+
+        } else {
+          dispatchEvent(event{eventType::mousedown, (short)bp->event_x,
+                              (short)bp->event_y, (short)bp->detail});
+        }
+      } break;
+      case XCB_BUTTON_RELEASE: {
+        xcb_button_release_event_t *br = (xcb_button_release_event_t *)xcbEvent;
+        // ignore button 4 and 5 which are wheel events.
+        if (br->detail != XCB_BUTTON_INDEX_4 &&
+            br->detail != XCB_BUTTON_INDEX_5)
+          dispatchEvent(event{eventType::mouseup, (short)br->event_x,
+                              (short)br->event_y, (short)br->detail});
+      } break;
+      case XCB_KEY_PRESS: {
+        xcb_key_press_event_t *kp = (xcb_key_press_event_t *)xcbEvent;
+        xcb_keysym_t sym = xcb_key_press_lookup_keysym(context.syms, kp, 0);
+        if (sym < 0x99) {
+          XKeyEvent keyEvent;
+          keyEvent.display = context.xdisplay;
+          keyEvent.keycode = kp->detail;
+          keyEvent.state = kp->state;
+          std::array<char, 16> buf{};
+          if (XLookupString(&keyEvent, buf.data(), buf.size(), nullptr,
+                            nullptr))
+            dispatchEvent(event{eventType::keypress, (char)buf[0]});
+        } else {
+          dispatchEvent(event{eventType::keydown, sym});
+        }
+      } break;
+      case XCB_KEY_RELEASE: {
+        xcb_key_release_event_t *kr = (xcb_key_release_event_t *)xcbEvent;
+        xcb_keysym_t sym = xcb_key_press_lookup_keysym(context.syms, kr, 0);
+        dispatchEvent(event{eventType::keyup, sym});
+      } break;
+      case XCB_EXPOSE: {
+        xcb_expose_event_t *eev = (xcb_expose_event_t *)xcbEvent;
+
+        dispatchEvent(event{eventType::paint, (short)eev->x, (short)eev->y,
+                            (short)eev->width, (short)eev->height});
+
+      } break;
+      case XCB_CONFIGURE_NOTIFY: {
+        const xcb_configure_notify_event_t *cfgEvent =
+            (const xcb_configure_notify_event_t *)xcbEvent;
+
+        if (cfgEvent->window == context.window) {
+          dispatchEvent(event{eventType::resize, (short)cfgEvent->width,
+                              (short)cfgEvent->height});
+        }
+      } break;
+      case XCB_CLIENT_MESSAGE: {
+        if ((*(xcb_client_message_event_t *)xcbEvent).data.data32[0] ==
+            (*reply2).atom) {
+          bProcessing = false;
+        }
+      } break;
       }
-    } break;
-    case XCB_BUTTON_RELEASE: {
-      xcb_button_release_event_t *br = (xcb_button_release_event_t *)xcbEvent;
-      // ignore button 4 and 5 which are wheel events.
-      if (br->detail != XCB_BUTTON_INDEX_4 && br->detail != XCB_BUTTON_INDEX_5)
-        dispatchEvent(event{eventType::mouseup, (short)br->event_x,
-                            (short)br->event_y, (short)br->detail});
-    } break;
-    case XCB_KEY_PRESS: {
-      xcb_key_press_event_t *kp = (xcb_key_press_event_t *)xcbEvent;
-      xcb_keysym_t sym = xcb_key_press_lookup_keysym(context.syms, kp, 0);
-      if (sym < 0x99) {
-        XKeyEvent keyEvent;
-        keyEvent.display = context.xdisplay;
-        keyEvent.keycode = kp->detail;
-        keyEvent.state = kp->state;
-        std::array<char, 16> buf{};
-        if (XLookupString(&keyEvent, buf.data(), buf.size(), nullptr, nullptr))
-          dispatchEvent(event{eventType::keypress, (char)buf[0]});
-      } else {
-        dispatchEvent(event{eventType::keydown, sym});
-      }
-    } break;
-    case XCB_KEY_RELEASE: {
-      xcb_key_release_event_t *kr = (xcb_key_release_event_t *)xcbEvent;
-      xcb_keysym_t sym = xcb_key_press_lookup_keysym(context.syms, kr, 0);
-      dispatchEvent(event{eventType::keyup, sym});
-    } break;
-    case XCB_EXPOSE: {
-      xcb_expose_event_t *eev = (xcb_expose_event_t *)xcbEvent;
-
-      dispatchEvent(event{eventType::paint, (short)eev->x, (short)eev->y,
-                          (short)eev->width, (short)eev->height});
-
-    } break;
-    case XCB_CONFIGURE_NOTIFY: {
-      const xcb_configure_notify_event_t *cfgEvent =
-          (const xcb_configure_notify_event_t *)xcbEvent;
-
-      if (cfgEvent->window == context.window) {
-        dispatchEvent(event{eventType::resize, (short)cfgEvent->width,
-                            (short)cfgEvent->height});
-      }
+      free(xcbEvent);
+      xcbEvents.pop_front();
     }
-    case XCB_CLIENT_MESSAGE: {
-      if ((*(xcb_client_message_event_t *)xcbEvent).data.data32[0] ==
-          (*reply2).atom) {
-        bProcessing = false;
-      }
-    }
-    }
-    free(xcbEvent);
+    // dispatchEventLock(false);
   }
 #elif defined(_WIN64)
   MSG msg;

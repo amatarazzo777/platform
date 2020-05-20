@@ -132,6 +132,7 @@ public:
   bool surfacePrime(void);
   void plot(CairoRegion &plotArea);
   void flush(void);
+  void lock(bool b);
   void resizeSurface(const int w, const int h);
   void offsetPosition(const int x, const int y);
   void collectables(DisplayUnitCollection *obj);

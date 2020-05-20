@@ -35,6 +35,7 @@ typedef unsigned char u_int8_t;
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <regex>
 #include <sstream>
 #include <stdexcept>

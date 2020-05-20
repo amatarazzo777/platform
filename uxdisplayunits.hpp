@@ -54,24 +54,46 @@ class DrawingOutput : public DisplayUnit {
 public:
   typedef DisplayContext::CairoRegion CairoRegion;
   DrawingOutput(){};
-  virtual ~DrawingOutput(){};
+  ~DrawingOutput() {
+    if (rendered)
+      cairo_surface_destroy(rendered);
+  }
+  DrawingOutput &operator=(const DrawingOutput &other) {
+    bCompleted = other.bCompleted;
+    viewportInked = other.viewportInked;
+    rendered = cairo_surface_reference(other.rendered);
+    fnDraw = other.fnDraw;
+    fnDrawClipped = other.fnDrawClipped;
+    std::copy(other.options.begin(), other.options.end(),
+              std::back_inserter(options));
+    _inkRectangle = other._inkRectangle;
+    intersection = other.intersection;
+    _intersection = other._intersection;
+
+    return *this;
+  }
+  DrawingOutput(const DrawingOutput &other) { *this = other; }
+
   bool hasInkExtents = false;
   cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
   cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
   void intersect(cairo_rectangle_t &r);
   void intersect(CairoRegion &r);
-  cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
-  cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
-  cairo_rectangle_t _intersection = cairo_rectangle_t();
+
   cairo_rectangle_t *inkExtents(void) { return &_inkRectangle; }
   cairo_rectangle_t *intersectionExtents(void) { return &_intersection; }
-  void invoke(DisplayContext &context);
+  void invoke(cairo_t *cr);
   bool isOutput(void) { return true; }
+
   bool bCompleted = false;
   bool viewportInked = false;
+  cairo_surface_t *rendered = nullptr;
   DrawLogic fnDraw = DrawLogic();
   DrawLogic fnDrawClipped = DrawLogic();
   CairoOptionFn options = {};
+  cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
+  cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
+  cairo_rectangle_t _intersection = cairo_rectangle_t();
 };
 
 class CLEARUNIT : public DisplayUnit {
@@ -344,8 +366,8 @@ public:
     if (layout)
       g_object_unref(layout);
   }
-  bool setLayoutOptions(DisplayContext &context);
-  void drawShadow(DisplayContext &context);
+  bool setLayoutOptions(cairo_t *cr);
+  void drawShadow(cairo_t *cr);
   void createShadow(void);
 
   std::size_t beginIndex = 0;
