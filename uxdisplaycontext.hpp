@@ -3,6 +3,7 @@
 \file uxdisplaycontext.hpp
 \date 5/12/20
 \version 1.0
+\version 1.0
  \details CLass holds the display window context, gui drawing, cairo
  context, and provides an interface for threads running to
  invalidate part of the surface, resize the surface. The
@@ -34,7 +35,9 @@ class OPTION_FUNCTION;
 class DisplayUnit;
 class DrawingOutput;
 typedef std::list<DisplayUnit *> DisplayUnitCollection;
+typedef std::list<DisplayUnit *>::iterator DisplayUnitCollectionIter;
 typedef std::list<DrawingOutput *> DrawingOutputCollection;
+typedef std::list<DrawingOutput *>::iterator DrawingOutputCollectionIter;
 
 class DisplayContext;
 typedef std::function<void(DisplayContext &context)> DrawLogic;
@@ -69,11 +72,19 @@ public:
 
       _ptr = cairo_region_create_rectangle(&rect);
     }
+    CairoRegion(std::size_t _obj, int x, int y, int w, int h) : obj(_obj) {
+      rect = {x, y, w, h};
+      _rect = {(double)x, (double)y, (double)w, (double)h};
+
+      _ptr = cairo_region_create_rectangle(&rect);
+    }
+
     CairoRegion(const CairoRegion &other) { *this = other; }
     CairoRegion &operator=(const CairoRegion &other) {
       _ptr = cairo_region_reference(other._ptr);
       rect = other.rect;
       _rect = other._rect;
+      obj = other.obj;
       return *this;
     }
     ~CairoRegion() {
@@ -85,6 +96,7 @@ public:
 
     cairo_region_t *_ptr = nullptr;
     bool eval = false;
+    std::size_t obj = 0;
   };
 
 public:
@@ -125,22 +137,32 @@ public:
   }
 
   DrawingOutputCollection viewportOff = {};
-  DrawingOutputCollection viewportOn = {};
+  std::atomic_flag drawables_off_readwrite = ATOMIC_FLAG_INIT;
+#define DRAWABLES_OFF_SPIN                                                     \
+  while (drawables_off_readwrite.test_and_set(std::memory_order_acquire))
+#define DRAWABLES_OFF_CLEAR                                                    \
+  drawables_off_readwrite.clear(std::memory_order_release)
 
-  typedef std::function<void(CairoRegion &)> RegionFunc;
+  DrawingOutputCollection viewportOn = {};
+  std::atomic_flag drawables_on_readwrite = ATOMIC_FLAG_INIT;
+#define DRAWABLES_ON_SPIN                                                      \
+  while (drawables_on_readwrite.test_and_set(std::memory_order_acquire))
+#define DRAWABLES_ON_CLEAR                                                     \
+  drawables_on_readwrite.clear(std::memory_order_release)
 
   bool surfacePrime(void);
   void plot(CairoRegion &plotArea);
   void flush(void);
-  void lock(bool b);
+
   void resizeSurface(const int w, const int h);
   void offsetPosition(const int x, const int y);
   void collectables(DisplayUnitCollection *obj);
 
-  void iterate(RegionFunc fn);
-
+  void render(void);
+  void state(DrawingOutput *obj);
   void state(bool on, int x = 0, int y = 0, int w = 0, int h = 0);
   bool state(void);
+  void clear(void);
 
   CurrentUnits currentUnits = CurrentUnits();
   void setUnit(AREA *_area) { currentUnits.area = _area; };
@@ -168,19 +190,12 @@ public:
   unsigned short windowWidth = 0;
   unsigned short windowHeight = 0;
   bool windowOpen = false;
+  Paint brush = Paint("white");
+  void addDrawable(DrawingOutput *_obj);
 
   cairo_t *cr = nullptr;
-  cairo_region_t *objectRegion = nullptr;
+
   cairo_rectangle_t viewportRectangle = cairo_rectangle_t();
-  cairo_region_t *viewport = nullptr;
-  typedef std::unordered_map<std::size_t, DrawLogic> AssociatedInkFN;
-  AssociatedInkFN inkedAreaAssociated = AssociatedInkFN();
-  typedef std::vector<cairo_rectangle_int_t *> InkedRects;
-  InkedRects inkedAreas = InkedRects();
-  std::size_t inkedAreasTotal = 0;
-  DisplayUnitCollection *collection = nullptr;
-  DisplayUnitCollection::iterator itunitCollectables =
-      DisplayUnitCollection::iterator();
 
 private:
   std::list<CairoRegion> _regions = {};

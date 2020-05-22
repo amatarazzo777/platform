@@ -37,11 +37,9 @@ void uxdevice::platform::renderLoop(void) {
     // need to be resized. This function acquires locks on these
     // small lists for the multi-threaded necessity.
     // searches for unready and syncs display context
-
     while (context.surfacePrime()) {
-      drawablesToReady();
-      // paints the regions
-      exposeRegions();
+      context.render();
+
       // blits the surface and xcb connection.
       context.flush();
     }
@@ -55,62 +53,12 @@ void uxdevice::platform::renderLoop(void) {
   }
 }
 
-void uxdevice::platform::drawablesToReady(void) {
-  DL_SPIN;
-  // process the display list
-  // moving render objects
-  if (DL.size() == 0)
-    return;
-
-  itDL_Processed =
-      std::find_if(DL.begin(), DL.end(), [](std::unique_ptr<DisplayUnit> &n) {
-        return n->bprocessed == false;
-      });
-
-  while (itDL_Processed != DL.end()) {
-    auto &n = *(*itDL_Processed).get();
-    n.invoke(context);
-    if (n.isOutput()) {
-      drawables.push_back(itDL_Processed->get());
-    }
-    n.bprocessed = true;
-    itDL_Processed++;
-  }
-  DL_CLEAR;
-
-  // inform display context about new drawing
-  context.collectables(&drawables);
-}
-
 /**
 \internal
 \brief The routine checks the display list for work.
 If any items are on screen, it is rendered to the xcb surface..
 */
-void uxdevice::platform::exposeRegions(void) {
-
-  // rectangle of area needs painting background first.
-  // these are subareas perhaps multiples exist because of resize
-  // coordinates. The information is generated from the
-  // paint dispatch event. When the window is opened
-  // render work will contain entire window
-  context.iterate([=](auto &r) {
-    // hides all drawing operations until pop to source.
-    cairo_push_group(context.cr);
-
-    brush.emit(context.cr);
-    cairo_rectangle(context.cr, r.rect.x, r.rect.y, r.rect.width,
-                    r.rect.height);
-    cairo_fill(context.cr);
-
-    context.plot(r);
-    // pop the draw group to the surface.
-    cairo_pop_group_to_source(context.cr);
-    cairo_paint(context.cr);
-  });
-}
-
-void uxdevice::platform::dispatchEventLock(bool b) { context.lock(b); }
+void uxdevice::platform::exposeRegions(void) {}
 
 /*
 \brief the dispatch routine is invoked by the messageLoop.
@@ -304,7 +252,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
 
   context.windowWidth = width;
   context.windowHeight = height;
-  brush = background;
+  context.brush = background;
 
 #if defined(__linux__)
   // this open provides interoperability between xcb and xwindows
@@ -725,12 +673,12 @@ void uxdevice::platform::messageLoop(void) {
   std::list<xcb_generic_event_t *> xcbEvents;
   while (bProcessing && (xcbEvent = xcb_wait_for_event(context.connection))) {
     xcbEvents.push_back(xcbEvent);
+
+    // qt5 does this, it queses all of the inputmessages at once.
+    // this makes the processing of painting and reading input faster.
     while (bProcessing &&
            (xcbEvent = xcb_poll_for_queued_event(context.connection)))
       xcbEvents.push_back(xcbEvent);
-
-    // lock
-    // dispatchEventLock(true);
 
     while (!xcbEvents.empty()) {
       xcbEvent = xcbEvents.front();
@@ -812,7 +760,6 @@ void uxdevice::platform::messageLoop(void) {
       free(xcbEvent);
       xcbEvents.pop_front();
     }
-    // dispatchEventLock(false);
   }
 #elif defined(_WIN64)
   MSG msg;
@@ -836,7 +783,7 @@ display list to not get in the way of the rendering loop,
 
 void uxdevice::platform::clear(void) {
   DL_SPIN;
-
+  context.clear();
   DL.clear();
   context.currentUnits = CurrentUnits();
   context.preclear = true;
@@ -847,6 +794,7 @@ void uxdevice::platform::clear(void) {
 void uxdevice::platform::antiAlias(antialias antialias) {
   DL_SPIN;
   DL.push_back(make_unique<ANTIALIAS>(antialias));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -856,6 +804,7 @@ void uxdevice::platform::antiAlias(antialias antialias) {
 void uxdevice::platform::text(const std::string &s) {
   DL_SPIN;
   DL.push_back(make_unique<STRING>(s));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -864,6 +813,7 @@ void uxdevice::platform::text(const std::string &s) {
 void uxdevice::platform::text(const std::stringstream &s) {
   DL_SPIN;
   DL.push_back(make_unique<STRING>(s.str()));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -872,6 +822,7 @@ void uxdevice::platform::text(const std::stringstream &s) {
 void uxdevice::platform::image(const std::string &s) {
   DL_SPIN;
   DL.push_back(make_unique<IMAGE>(s));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -880,46 +831,54 @@ void uxdevice::platform::image(const std::string &s) {
 void uxdevice::platform::pen(const Paint &p) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(p));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::pen(u_int32_t c) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::pen(const string &c) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::pen(const std::string &c, double w, double h) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(c, w, h));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::pen(double _r, double _g, double _b) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(_r, _g, _b));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(_r, _g, _b, _a));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
                              const ColorStops &cs) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(x0, y0, x1, y1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
                              double cy1, double radius1, const ColorStops &cs) {
   DL_SPIN;
   DL.push_back(make_unique<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -929,39 +888,46 @@ void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
 void uxdevice::platform::background(const Paint &p) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(p));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(u_int32_t c) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(const string &c) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(const std::string &c, double w, double h) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(c, w, h));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::background(double _r, double _g, double _b) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(_r, _g, _b, _a));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(double x0, double y0, double x1, double y1,
                                     const ColorStops &cs) {
   DL_SPIN;
   DL.push_back(make_unique<BACKGROUND>(x0, y0, x1, y1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::background(double cx0, double cy0, double radius0,
@@ -970,6 +936,7 @@ void uxdevice::platform::background(double cx0, double cy0, double radius0,
   DL_SPIN;
   DL.push_back(
       make_unique<BACKGROUND>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -978,6 +945,7 @@ void uxdevice::platform::background(double cx0, double cy0, double radius0,
 void uxdevice::platform::textAlignment(alignment aln) {
   DL_SPIN;
   DL.push_back(make_unique<ALIGN>(aln));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -987,11 +955,13 @@ void uxdevice::platform::textAlignment(alignment aln) {
 void uxdevice::platform::textOutline(const Paint &p, double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(p, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1000,12 +970,14 @@ void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
 void uxdevice::platform::textOutline(const string &c, double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(c, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textOutline(const std::string &c, double w, double h,
                                      double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(c, w, h, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1015,6 +987,7 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b,
                                      double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1024,12 +997,14 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
                                      double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textOutline(double x0, double y0, double x1, double y1,
                                      const ColorStops &cs, double dWidth) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1039,6 +1014,7 @@ void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
   DL_SPIN;
   DL.push_back(make_unique<TEXTOUTLINE>(cx0, cy0, radius0, cx1, cy1, radius1,
                                         cs, dWidth));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1049,43 +1025,51 @@ void uxdevice::platform::textOutlineNone(void) {
   DL_SPIN;
   DL.push_back(
       make_unique<CLEARUNIT>((void **)&context.currentUnits.textoutline));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::textFill(const Paint &p) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(p));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(u_int32_t c) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(const string &c) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(c));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(const string &c, double w, double h) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(c, w, h));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(_r, _g, _b, _a));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double x0, double y0, double x1, double y1,
                                   const ColorStops &cs) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(x0, y0, x1, y1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
@@ -1093,6 +1077,7 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
                                   const ColorStops &cs) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1102,7 +1087,7 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
 void uxdevice::platform::textFillNone(void) {
   DL_SPIN;
   DL.push_back(make_unique<CLEARUNIT>((void **)&context.currentUnits.textfill));
-
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1112,12 +1097,14 @@ void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(p, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1127,12 +1114,14 @@ void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(c, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 void uxdevice::platform::textShadow(const std::string &c, double w, double h,
                                     int r, double xOffset, double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1143,6 +1132,7 @@ void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
                                     double xOffset, double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1152,6 +1142,7 @@ void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
                                     int r, double xOffset, double yOffset) {
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1161,6 +1152,7 @@ void uxdevice::platform::textShadow(double x0, double y0, double x1, double y1,
   DL_SPIN;
   DL.push_back(
       make_unique<TEXTSHADOW>(x0, y0, x1, y1, cs, r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1171,6 +1163,7 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
   DL_SPIN;
   DL.push_back(make_unique<TEXTSHADOW>(cx0, cy0, radius0, cx1, cy1, radius1, cs,
                                        r, xOffset, yOffset));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1181,6 +1174,7 @@ void uxdevice::platform::textShadowNone(void) {
   DL_SPIN;
   DL.push_back(
       make_unique<CLEARUNIT>((void **)&context.currentUnits.textshadow));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1190,6 +1184,7 @@ void uxdevice::platform::textShadowNone(void) {
 void uxdevice::platform::font(const std::string &s) {
   DL_SPIN;
   DL.push_back(make_unique<FONT>(s));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1198,6 +1193,7 @@ void uxdevice::platform::font(const std::string &s) {
 void uxdevice::platform::area(double x, double y, double w, double h) {
   DL_SPIN;
   DL.push_back(make_unique<AREA>(areaType::rectangle, x, y, w, h));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1205,12 +1201,14 @@ void uxdevice::platform::area(double x, double y, double w, double h, double rx,
                               double ry) {
   DL_SPIN;
   DL.push_back(make_unique<AREA>(x, y, w, h, rx, ry));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
 void uxdevice::platform::areaCircle(double x, double y, double d) {
   DL_SPIN;
   DL.push_back(make_unique<AREA>(x, y, d / 2));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1218,6 +1216,7 @@ void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
                                      double ry) {
   DL_SPIN;
   DL.push_back(make_unique<AREA>(areaType::ellipse, cx, cy, rx, ry));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1226,7 +1225,9 @@ void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
 */
 void uxdevice::platform::drawText(void) {
   DL_SPIN;
+
   DL.push_back(make_unique<DRAWTEXT>());
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1235,7 +1236,9 @@ void uxdevice::platform::drawText(void) {
 */
 void uxdevice::platform::drawImage(void) {
   DL_SPIN;
+
   DL.push_back(make_unique<DRAWIMAGE>());
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1243,7 +1246,9 @@ void uxdevice::platform::drawImage(void) {
 */
 void uxdevice::platform::drawArea(void) {
   DL_SPIN;
+
   DL.push_back(std::make_unique<DRAWAREA>());
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1255,6 +1260,7 @@ void uxdevice::platform::save(void) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_save, _1);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1265,6 +1271,7 @@ void uxdevice::platform::restore(void) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_restore, _1);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1279,6 +1286,7 @@ void uxdevice::platform::push(content c) {
                      static_cast<cairo_content_t>(c));
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1292,6 +1300,7 @@ void uxdevice::platform::pop(bool bToSource) {
     func = std::bind(cairo_pop_group, _1);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1303,6 +1312,7 @@ void uxdevice::platform::translate(double x, double y) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_translate, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1313,6 +1323,7 @@ void uxdevice::platform::rotate(double angle) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_rotate, _1, angle);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1323,6 +1334,7 @@ void uxdevice::platform::scale(double x, double y) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_scale, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1333,6 +1345,7 @@ void uxdevice::platform::transform(const Matrix &m) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1343,6 +1356,7 @@ void uxdevice::platform::matrix(const Matrix &m) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m._matrix);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1353,6 +1367,7 @@ void uxdevice::platform::identity(void) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_identity_matrix, _1);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1372,6 +1387,7 @@ void uxdevice::platform::device(double &x, double &y) {
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1390,6 +1406,7 @@ void uxdevice::platform::deviceDistance(double &x, double &y) {
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 /**
@@ -1407,6 +1424,7 @@ void uxdevice::platform::user(double &x, double &y) {
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1425,6 +1443,7 @@ void uxdevice::platform::userDistance(double &x, double &y) {
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1437,6 +1456,7 @@ void uxdevice::platform::cap(lineCap c) {
   CAIRO_OPTION func =
       std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1449,6 +1469,7 @@ void uxdevice::platform::join(lineJoin j) {
   CAIRO_FUNCTION func =
       std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1460,6 +1481,7 @@ void uxdevice::platform::lineWidth(double dWidth) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1471,6 +1493,7 @@ void uxdevice::platform::miterLimit(double dLimit) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1484,6 +1507,7 @@ void uxdevice::platform::dashes(const std::vector<double> &dashes,
   CAIRO_FUNCTION func =
       std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1495,6 +1519,7 @@ void uxdevice::platform::tollerance(double _t) {
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1507,6 +1532,7 @@ void uxdevice::platform::op(op_t _op) {
   CAIRO_FUNCTION func =
       std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1519,6 +1545,7 @@ void uxdevice::platform::source(Paint &p) {
   auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
   CAIRO_FUNCTION func = std::bind(fn, _1, p);
   DL.push_back(make_unique<OPTION_FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1536,6 +1563,7 @@ void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
     func = std::bind(cairo_arc, _1, xc, yc, radius, angle1, angle2);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1553,6 +1581,7 @@ void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
     func = std::bind(cairo_curve_to, _1, x1, y1, x2, y2, x3, y3);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1569,6 +1598,7 @@ void uxdevice::platform::line(double x, double y, bool bRelative) {
     func = std::bind(cairo_line_to, _1, x, y);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1585,6 +1615,7 @@ void uxdevice::platform::stroke(bool bPreserve) {
     func = std::bind(cairo_stroke, _1);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1601,6 +1632,7 @@ void uxdevice::platform::move(double x, double y, bool bRelative) {
     func = std::bind(cairo_move_to, _1, x, y);
   }
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 
@@ -1613,6 +1645,7 @@ void uxdevice::platform::rectangle(double x, double y, double width,
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_rectangle, _1, x, y, width, height);
   DL.push_back(make_unique<FUNCTION>(func));
+  DL.back()->invoke(context);
   DL_CLEAR;
 }
 

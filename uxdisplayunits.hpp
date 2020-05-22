@@ -55,6 +55,10 @@ public:
   typedef DisplayContext::CairoRegion CairoRegion;
   DrawingOutput(){};
   ~DrawingOutput() {
+    removethread();
+    if(cr)
+      cairo_destroy(cr);
+
     if (rendered)
       cairo_surface_destroy(rendered);
   }
@@ -64,6 +68,7 @@ public:
     rendered = cairo_surface_reference(other.rendered);
     fnDraw = other.fnDraw;
     fnDrawClipped = other.fnDrawClipped;
+    cr = cairo_reference(cr);
     std::copy(other.options.begin(), other.options.end(),
               std::back_inserter(options));
     _inkRectangle = other._inkRectangle;
@@ -74,6 +79,11 @@ public:
   }
   DrawingOutput(const DrawingOutput &other) { *this = other; }
 
+  void removethread(void) {
+    if (renderthread.get())
+      renderthread.get()->detach();
+    renderthread.reset();
+  }
   bool hasInkExtents = false;
   cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
   cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
@@ -83,13 +93,18 @@ public:
   cairo_rectangle_t *inkExtents(void) { return &_inkRectangle; }
   cairo_rectangle_t *intersectionExtents(void) { return &_intersection; }
   void invoke(cairo_t *cr);
+  void invoke(DisplayContext &context) {}
   bool isOutput(void) { return true; }
-
+  std::unique_ptr<std::thread> renderthread = nullptr;
+  std::atomic<bool> bRenderBufferCached = false;
+  cairo_surface_t *rendered = nullptr;
+  cairo_t *cr = nullptr;
   bool bCompleted = false;
   bool viewportInked = false;
-  cairo_surface_t *rendered = nullptr;
+
   DrawLogic fnDraw = DrawLogic();
   DrawLogic fnDrawClipped = DrawLogic();
+
   CairoOptionFn options = {};
   cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
   cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
@@ -119,6 +134,7 @@ public:
   void invoke(DisplayContext &context) {
     cairo_set_antialias(context.cr, setting);
     context.setUnit(this);
+    bprocessed = true;
   }
 
   cairo_antialias_t setting;
@@ -147,12 +163,8 @@ public:
   void shrink(double dWidth);
   double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
   areaType type = areaType::none;
-  cairo_rectangle_int_t cairoInkRectangle = cairo_rectangle_int_t();
-  cairo_rectangle_int_t *inkExtents(void) { return &cairoInkRectangle; };
-  void invoke(DisplayContext &context) {
-    cairoInkRectangle = {(int)x, (int)y, (int)w, (int)h};
-    context.setUnit(this);
-  }
+
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class STRING : public DisplayUnit {
@@ -160,7 +172,7 @@ public:
   STRING(const std::string &s) : data(s) {}
   ~STRING() {}
   std::string data;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class FONT : public DisplayUnit {
@@ -188,6 +200,7 @@ public:
     if (!fontDescription)
       fontDescription = pango_font_description_from_string(description.data());
     context.setUnit(this);
+      bprocessed = true;
   }
 };
 
@@ -205,7 +218,7 @@ public:
       double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~PEN() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class BACKGROUND : public DisplayUnit, public Paint {
@@ -223,7 +236,7 @@ public:
              double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~BACKGROUND() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class ALIGN : public DisplayUnit {
@@ -232,7 +245,7 @@ public:
   ~ALIGN() {}
   void emit(PangoLayout *layout);
   alignment setting = alignment::left;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class EVENT : public DisplayUnit {
@@ -240,7 +253,7 @@ public:
   EVENT(eventHandler _eh) : fn(_eh){};
   ~EVENT() {}
   eventHandler fn;
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class TEXTSHADOW : public DisplayUnit, public Paint {
@@ -270,7 +283,7 @@ public:
         y(yOffset) {}
 
   ~TEXTSHADOW() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed=true; context.setUnit(this); }
 
 public:
   unsigned short radius = 3;
@@ -307,7 +320,7 @@ public:
     cairo_set_line_width(cr, lineWidth);
   }
 
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 
 public:
   double lineWidth = .5;
@@ -329,7 +342,7 @@ public:
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
   ~TEXTFILL() {}
-  void invoke(DisplayContext &context) { context.setUnit(this); }
+  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
 };
 
 class IMAGE : public DisplayUnit {
@@ -341,15 +354,26 @@ public:
     return *this;
   }
   ~IMAGE() {
+    removethread();
     if (_image)
       cairo_surface_destroy(_image);
   }
 
+  void removethread(void) {
+    if (loadthread.get()) {
+      if (loadthread.get()->joinable())
+        loadthread.get()->join();
+
+      loadthread.reset();
+    }
+  }
   void invoke(DisplayContext &context);
   cairo_surface_t *_image = nullptr;
+  std::unique_ptr<std::thread> loadthread = nullptr;
+  AREA *area = nullptr;
   std::string _data = "";
   bool bIsSVG = false;
-  bool bLoaded = false;
+  std::atomic<bool> bLoaded = false;
 };
 class DRAWTEXT : public DrawingOutput {
 public:
@@ -363,6 +387,9 @@ public:
     if (shadowImage)
       cairo_surface_destroy(shadowImage);
 
+    if(shadowCr)
+      cairo_destroy(shadowCr);
+
     if (layout)
       g_object_unref(layout);
   }
@@ -374,6 +401,7 @@ public:
   std::size_t endIndex = 0;
   bool bEntire = true;
   cairo_surface_t *shadowImage = nullptr;
+  cairo_t *shadowCr = nullptr;
   PangoLayout *layout = nullptr;
   PangoRectangle ink_rect = PangoRectangle();
   PangoRectangle logical_rect = PangoRectangle();
@@ -395,7 +423,7 @@ class DRAWIMAGE : public DrawingOutput {
 public:
   DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
   DRAWIMAGE(void) {}
-  ~DRAWIMAGE() {}
+  ~DRAWIMAGE() { image->removethread(); }
   DRAWIMAGE(const DRAWIMAGE &other) { *this = other; }
   DRAWIMAGE &operator=(const DRAWIMAGE &other) {
     area = other.area;
@@ -440,7 +468,7 @@ class FUNCTION : public DisplayUnit {
 public:
   FUNCTION(CAIRO_FUNCTION _func) : func(_func) {}
   ~FUNCTION() {}
-  void invoke(DisplayContext &context) { func(context.cr); }
+  void invoke(DisplayContext &context) {   bprocessed = true; func(context.cr); }
 
 private:
   CAIRO_FUNCTION func;

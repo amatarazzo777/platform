@@ -17,9 +17,9 @@
 options when compiling the source.
 @{
 */
-//#define USE_STACKBLUR
+#define USE_STACKBLUR
 
-#define USE_SVGREN
+//#define USE_SVGREN
 
 #define DEFAULT_TEXTFACE "arial"
 #define DEFAULT_TEXTSIZE 12
@@ -80,7 +80,7 @@ public:
                   const unsigned short height,
                   Paint background = Paint("white"));
   void closeWindow(void);
-  void backgroundBrush(Paint &p) { brush = p; }
+  void backgroundBrush(Paint &p) { context.brush = p; }
   bool processing(void) { return bProcessing; }
 
   void startProcessing(int _fps);
@@ -235,13 +235,12 @@ public:
   bounds clip(void);
   void clip(bool bPreserve = false);
   bool inClip(double x, double y);
+  void brush(Paint &p) { context.brush = p; }
 
 private:
   void renderLoop(void);
   void exposeRegions(void);
-  void drawablesToReady(void);
   void dispatchEvent(const event &e);
-  void dispatchEventLock(bool b);
   void drawCaret(const int x, const int y, const int h);
 
   void messageLoop(void);
@@ -263,7 +262,7 @@ private:
   int framesPerSecond = 30;
   errorHandler fnError = nullptr;
   eventHandler fnEvents = nullptr;
-  Paint brush = Paint("white");
+
   typedef std::list<std::unique_ptr<DisplayUnit>> DisplayUnitStorage;
   DisplayUnitStorage DL = {};
   DisplayUnitStorage::iterator itDL_Processed = DL.begin();
@@ -272,13 +271,6 @@ private:
 
 #define DL_SPIN while (DL_readwrite.test_and_set(std::memory_order_acquire))
 #define DL_CLEAR DL_readwrite.clear(std::memory_order_release)
-
-  DisplayUnitCollection drawables = {};
-  std::atomic_flag drawables_readwrite = ATOMIC_FLAG_INIT;
-
-#define DRAWABLES_SPIN                                                         \
-  while (drawables_readwrite.test_and_set(std::memory_order_acquire))
-#define DRAWABLES_CLEAR drawables_readwrite.clear(std::memory_order_release)
 
   std::vector<eventHandler> onfocus = {};
   std::vector<eventHandler> onblur = {};

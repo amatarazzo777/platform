@@ -198,19 +198,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   // starts rendering and message threads
   // parameter notes frame per second
-  vis.startProcessing(100);
-
-  // items may be inserted before window open
-  // the information goes in but is not processed
-  // until after window is open.
-  //draw(vis, 1);
-  // drawSi(vis);
-   //drawSimple(vis);
-  // drawSimple2(vis);
-  drawText(vis, 1);
-  drawshapes(vis, 1);
-
-  // draw(vis, 1);
+  vis.startProcessing(60);
   std::random_device rd;
   std::mt19937 gen(rd());
 
@@ -224,24 +212,39 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   vis.openWindow(
       "Information Title", 500, 600,
-      Paint(
-          coord(gen), coord(gen), coord(gen), coord(gen),
-          {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}}));
+      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
+
+  // items may be inserted before window open
+  // the information goes in but is not processed
+  // until after window is open.
+  // draw(vis, 1);
+  // drawSi(vis);
+  // drawSimple(vis);
+  // drawSimple2(vis);
+
+  drawshapes(vis, 1);
+
+  // drawText(vis, 1);
+
+  // draw(vis, 1);
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
   // when the user closes the window, the switch will be false
   double dStep = 1;
   while (vis.processing()) {
-    for (int i = 0; i < 100; i++) {
-      //  drawUpdate(vis, dStep);
-      // drawshapes(vis, dStep);
-      dStep = dStep + .1;
-      if (dStep > 2)
-        dStep = 1;
-    }
+
+    drawshapes(vis, 1);
+    drawText(vis, 1);
+
     // sleep for some time to not take over cpu,
-    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    Paint p =
+        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+    vis.brush(p);
+    vis.clear();
   }
 
   return 0;
@@ -362,48 +365,86 @@ void drawText(platform &vis, double dStep) {
       "heavenly "
       "home.");
 
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> scrn(0, 800.0);
+    std::uniform_real_distribution<> dcir(25.0, 100.0);
+    std::uniform_real_distribution<> color(.5, 1.0);
+    std::uniform_real_distribution<> opac(.7, 1);
+    std::uniform_real_distribution<> lw(0, 10.0);
+    std::uniform_real_distribution<> coord(25.0, 100.0);
+    std::uniform_int_distribution<> shape(1, 4);
+    switch (shape(gen)) {
+    case 1:
+      vis.areaCircle(scrn(gen), scrn(gen), dcir(gen));
+      break;
+    case 2:
+      vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
+      break;
+    case 3:
+      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen), dcir(gen),
+               dcir(gen));
+      break;
+    case 4:
+      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen));
+      break;
+    }
+#define _C color(gen)
+#define _A opac(gen)
+
+    vis.textFill(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
+    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
   // set the font name according to pango spi. see pango font description.
   vis.font("DejaVu Sans Bold 24");
 
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(0, 0, 800, 600, 120, 120);
-  // vis.translate(0, 400);
-  // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
-  // gradient
-  vis.textOutline("darkred", 1.5);
-  vis.textFill("red");
+  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen),scrn(gen),scrn(gen));
+
   vis.drawText();
 
-  vis.area(0, 400, 800, 300);
+  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
   vis.text("Silver colored crafts from another galaxy seem "
            "curiously welcomed as the memorizing audio waves "
            "produced a canny type of music. A simple ten note ");
   vis.drawText();
+
   vis.textFill(
-      0, 0, 300, 300,
-      {{"purple"}, {"red"}, {"orange"}, {"green"}, {"blue"}, {"lightbrown"}});
-  vis.area(0, 600, 800, 300);
-  // the gradient repeats, so a smaller line will create a
-  // stripe.
-  vis.textOutline(0, 0, 5, 10, {{"pink", .4}, {"red", .6}}, 3);
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
+
+    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
+
+  vis.text("The color of text can be a choice. Yet the appearance is a common desire.");
   vis.drawText();
 
   vis.font("DejaVu Sans Bold 44");
-  vis.area(0, 700, 800, 300);
+  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
   vis.text("Planets orbit the mass, but this is inconsequential of "
            "the heat provided. As children, we find a balance. ");
 
-  // use base 64 inline image string as texture fill
-  vis.textFill(stripes);
-  vis.textOutline("blue", 3);
+  vis.textFill(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
+
+    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
   vis.drawText();
 }
 
 void drawshapes(platform &vis, double dStep) {
   // circle
 
-  for (int c = 0; c < 20; c++) {
+  for (int c = 0; c < 10; c++) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> scrn(0, 800.0);
