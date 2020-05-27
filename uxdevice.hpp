@@ -17,9 +17,9 @@
 options when compiling the source.
 @{
 */
-#define USE_STACKBLUR
+//#define USE_STACKBLUR
 
-//#define USE_SVGREN
+#define USE_SVGREN
 
 #define DEFAULT_TEXTFACE "arial"
 #define DEFAULT_TEXTSIZE 12
@@ -29,7 +29,7 @@ options when compiling the source.
 \def USE_DEBUG_CONSOLE
 */
 #define USE_DEBUG_CONSOLE
-
+//#define CONSOLE
 /** @} */
 
 #include "uxbase.hpp"
@@ -79,6 +79,7 @@ public:
   void openWindow(const std::string &sWindowTitle, const unsigned short width,
                   const unsigned short height,
                   Paint background = Paint("white"));
+  void surfaceBrush(Paint &b);
   void closeWindow(void);
   void backgroundBrush(Paint &p) { context.brush = p; }
   bool processing(void) { return bProcessing; }
@@ -235,7 +236,6 @@ public:
   bounds clip(void);
   void clip(bool bPreserve = false);
   bool inClip(double x, double y);
-  void brush(Paint &p) { context.brush = p; }
 
 private:
   void renderLoop(void);
@@ -263,7 +263,7 @@ private:
   errorHandler fnError = nullptr;
   eventHandler fnEvents = nullptr;
 
-  typedef std::list<std::unique_ptr<DisplayUnit>> DisplayUnitStorage;
+  typedef std::list<std::shared_ptr<DisplayUnit>> DisplayUnitStorage;
   DisplayUnitStorage DL = {};
   DisplayUnitStorage::iterator itDL_Processed = DL.begin();
 

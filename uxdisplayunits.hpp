@@ -55,8 +55,7 @@ public:
   typedef DisplayContext::CairoRegion CairoRegion;
   DrawingOutput(){};
   ~DrawingOutput() {
-    removethread();
-    if(cr)
+    if (cr)
       cairo_destroy(cr);
 
     if (rendered)
@@ -79,11 +78,6 @@ public:
   }
   DrawingOutput(const DrawingOutput &other) { *this = other; }
 
-  void removethread(void) {
-    if (renderthread.get())
-      renderthread.get()->detach();
-    renderthread.reset();
-  }
   bool hasInkExtents = false;
   cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
   cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
@@ -95,13 +89,18 @@ public:
   void invoke(cairo_t *cr);
   void invoke(DisplayContext &context) {}
   bool isOutput(void) { return true; }
-  std::unique_ptr<std::thread> renderthread = nullptr;
   std::atomic<bool> bRenderBufferCached = false;
   cairo_surface_t *rendered = nullptr;
   cairo_t *cr = nullptr;
   bool bCompleted = false;
   bool viewportInked = false;
 
+  // These functions switch the rendering apparatus from off
+  // screen threaded to on screen. all rendering is serialize to the main
+  // surface
+  //
+  DrawLogic fnCacheSurface = DrawLogic();
+  DrawLogic fnBaseSurface = DrawLogic();
   DrawLogic fnDraw = DrawLogic();
   DrawLogic fnDrawClipped = DrawLogic();
 
@@ -131,9 +130,9 @@ class ANTIALIAS : public DisplayUnit {
 public:
   ANTIALIAS(antialias _antialias)
       : setting(static_cast<cairo_antialias_t>(_antialias)) {}
+
   void invoke(DisplayContext &context) {
     cairo_set_antialias(context.cr, setting);
-    context.setUnit(this);
     bprocessed = true;
   }
 
@@ -164,7 +163,7 @@ public:
   double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
   areaType type = areaType::none;
 
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class STRING : public DisplayUnit {
@@ -172,7 +171,7 @@ public:
   STRING(const std::string &s) : data(s) {}
   ~STRING() {}
   std::string data;
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class FONT : public DisplayUnit {
@@ -199,8 +198,7 @@ public:
   void invoke(DisplayContext &context) {
     if (!fontDescription)
       fontDescription = pango_font_description_from_string(description.data());
-    context.setUnit(this);
-      bprocessed = true;
+    bprocessed = true;
   }
 };
 
@@ -218,7 +216,7 @@ public:
       double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~PEN() {}
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class BACKGROUND : public DisplayUnit, public Paint {
@@ -236,7 +234,7 @@ public:
              double radius1, const ColorStops &cs)
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
   ~BACKGROUND() {}
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class ALIGN : public DisplayUnit {
@@ -245,7 +243,7 @@ public:
   ~ALIGN() {}
   void emit(PangoLayout *layout);
   alignment setting = alignment::left;
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class EVENT : public DisplayUnit {
@@ -253,7 +251,7 @@ public:
   EVENT(eventHandler _eh) : fn(_eh){};
   ~EVENT() {}
   eventHandler fn;
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class TEXTSHADOW : public DisplayUnit, public Paint {
@@ -283,7 +281,7 @@ public:
         y(yOffset) {}
 
   ~TEXTSHADOW() {}
-  void invoke(DisplayContext &context) { bprocessed=true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 
 public:
   unsigned short radius = 3;
@@ -320,7 +318,7 @@ public:
     cairo_set_line_width(cr, lineWidth);
   }
 
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 
 public:
   double lineWidth = .5;
@@ -342,7 +340,7 @@ public:
       : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
 
   ~TEXTFILL() {}
-  void invoke(DisplayContext &context) {   bprocessed = true; context.setUnit(this); }
+  void invoke(DisplayContext &context) { bprocessed = true; }
 };
 
 class IMAGE : public DisplayUnit {
@@ -370,7 +368,7 @@ public:
   void invoke(DisplayContext &context);
   cairo_surface_t *_image = nullptr;
   std::unique_ptr<std::thread> loadthread = nullptr;
-  AREA *area = nullptr;
+  std::shared_ptr<AREA> area = nullptr;
   std::string _data = "";
   bool bIsSVG = false;
   std::atomic<bool> bLoaded = false;
@@ -387,7 +385,7 @@ public:
     if (shadowImage)
       cairo_surface_destroy(shadowImage);
 
-    if(shadowCr)
+    if (shadowCr)
       cairo_destroy(shadowCr);
 
     if (layout)
@@ -407,14 +405,14 @@ public:
   PangoRectangle logical_rect = PangoRectangle();
 
   // local parameter pointers
-  PEN *pen = nullptr;
-  TEXTOUTLINE *textoutline = nullptr;
-  TEXTFILL *textfill = nullptr;
-  TEXTSHADOW *textshadow = nullptr;
-  AREA *area = nullptr;
-  STRING *text = nullptr;
-  FONT *font = nullptr;
-  ALIGN *align = nullptr;
+  std::shared_ptr<PEN> pen = nullptr;
+  std::shared_ptr<TEXTOUTLINE> textoutline = nullptr;
+  std::shared_ptr<TEXTFILL> textfill = nullptr;
+  std::shared_ptr<TEXTSHADOW> textshadow = nullptr;
+  std::shared_ptr<AREA> area = nullptr;
+  std::shared_ptr<STRING> text = nullptr;
+  std::shared_ptr<FONT> font = nullptr;
+  std::shared_ptr<ALIGN> align = nullptr;
 
   void invoke(DisplayContext &context);
 };
@@ -435,8 +433,8 @@ public:
 
 private:
   AREA src = AREA();
-  AREA *area = nullptr;
-  IMAGE *image = nullptr;
+  std::shared_ptr<AREA> area = nullptr;
+  std::shared_ptr<IMAGE> image = nullptr;
 
   bool bEntire = true;
 };
@@ -454,9 +452,9 @@ public:
   }
 
   void invoke(DisplayContext &context);
-  AREA *area = nullptr;
-  BACKGROUND *background = nullptr;
-  PEN *pen = nullptr;
+  std::shared_ptr<AREA> area = nullptr;
+  std::shared_ptr<BACKGROUND> background = nullptr;
+  std::shared_ptr<PEN> pen = nullptr;
 };
 
 /**
@@ -468,7 +466,10 @@ class FUNCTION : public DisplayUnit {
 public:
   FUNCTION(CAIRO_FUNCTION _func) : func(_func) {}
   ~FUNCTION() {}
-  void invoke(DisplayContext &context) {   bprocessed = true; func(context.cr); }
+  void invoke(DisplayContext &context) {
+    bprocessed = true;
+    func(context.cr);
+  }
 
 private:
   CAIRO_FUNCTION func;

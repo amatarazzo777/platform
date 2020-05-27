@@ -58,7 +58,8 @@ void uxdevice::DisplayContext::flush() {
 
 void uxdevice::DisplayContext::resizeSurface(const int w, const int h) {
   SURFACE_REQUESTS_SPIN;
-  _surfaceRequests.push_back(std::make_tuple(w, h));
+  if (w != windowWidth || h != windowHeight)
+    _surfaceRequests.push_back(std::make_tuple(w, h));
   SURFACE_REQUESTS_CLEAR;
 }
 
@@ -76,42 +77,50 @@ void uxdevice::DisplayContext::render(void) {
     windowWidth = std::get<0>(flat);
     windowHeight = std::get<1>(flat);
   }
+  SURFACE_REQUESTS_CLEAR;
 
   // rectangle of area needs painting background first.
   // these are subareas perhaps multiples exist because of resize
   // coordinates. The information is generated from the
   // paint dispatch event. When the window is opened
   // render work will contain entire window
-  DRAWABLES_ON_SPIN;
 
   REGIONS_SPIN;
   std::size_t cnt = _regions.size();
   auto it = _regions.begin();
 
+
+  DRAWABLES_ON_SPIN;
+
+  // AFM NOTE it appears the the push and pop
+  // cause a memory error, over writing a malloc block
+  // header -- os reports a size difernt that prev
+    // hides all drawing operations until pop to source.
+  //cairo_push_group(cr);
+
   while (cnt) {
 
     CairoRegion &r = *it;
-    // hides all drawing operations until pop to source.
-    cairo_push_group(cr);
 
     brush.emit(cr);
     cairo_rectangle(cr, r.rect.x, r.rect.y, r.rect.width, r.rect.height);
     cairo_fill(cr);
 
     plot(r);
-    // pop the draw group to the surface.
-    cairo_pop_group_to_source(cr);
-    cairo_paint(cr);
 
     it++;
     cnt--;
   }
-  REGIONS_CLEAR;
-  DRAWABLES_ON_CLEAR;
-  SURFACE_REQUESTS_CLEAR;
-}
-void uxdevice::DisplayContext::addDrawable(DrawingOutput *_obj) {
 
+  // pop the draw group to the surface.
+ // cairo_pop_group_to_source(cr);
+  //cairo_paint(cr);
+  DRAWABLES_ON_CLEAR;
+  REGIONS_CLEAR;
+}
+
+void uxdevice::DisplayContext::addDrawable(
+    std::shared_ptr<DrawingOutput> _obj) {
   viewportRectangle = {(double)offsetx, (double)offsety,
                        (double)offsetx + (double)windowWidth,
                        (double)offsety + (double)windowHeight};
@@ -124,62 +133,45 @@ void uxdevice::DisplayContext::addDrawable(DrawingOutput *_obj) {
   } else {
     DRAWABLES_ON_SPIN;
     viewportOn.push_back(_obj);
-    state(_obj);
     DRAWABLES_ON_CLEAR;
+    state(_obj);
   }
   _obj->viewportInked = true;
 }
+
 void uxdevice::DisplayContext::clear(void) {
-  DRAWABLES_ON_SPIN;
-  DRAWABLES_OFF_SPIN;
   REGIONS_SPIN;
-  SURFACE_REQUESTS_SPIN;
-
   _regions.clear();
-
-  // processing surface requests
-  if (!_surfaceRequests.empty()) {
-    auto flat = _surfaceRequests.back();
-    _surfaceRequests.clear();
-
-    cairo_surface_flush(xcbSurface);
-    cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat),
-                               std::get<1>(flat));
-    windowWidth = std::get<0>(flat);
-    windowHeight = std::get<1>(flat);
-  }
-
-  viewportOff.clear();
-  viewportOn.clear();
-
-  // hides all drawing operations until pop to source.
-  cairo_push_group(cr);
-
   offsetx = 0;
   offsety = 0;
-
-  brush.emit(cr);
   viewportRectangle = {(double)offsetx, (double)offsety,
                        (double)offsetx + (double)windowWidth,
                        (double)offsety + (double)windowHeight};
-  cairo_rectangle(cr, viewportRectangle.x, viewportRectangle.y,
-                  viewportRectangle.width, viewportRectangle.height);
-  cairo_fill(cr);
 
-  // pop the draw group to the surface.
-  cairo_pop_group_to_source(cr);
-  cairo_paint(cr);
-
-  REGIONS_CLEAR;
+  currentUnits = CurrentUnits();
+  DRAWABLES_ON_SPIN;
+  viewportOn.clear();
   DRAWABLES_ON_CLEAR;
-  DRAWABLES_OFF_CLEAR;
-  SURFACE_REQUESTS_CLEAR;
+  REGIONS_CLEAR;
 
+  DRAWABLES_OFF_SPIN;
+  viewportOff.clear();
+  DRAWABLES_OFF_CLEAR;
+
+  state(true, 0, 0, windowWidth, windowHeight);
 }
 
-void uxdevice::DisplayContext::state(DrawingOutput *obj) {
+void uxdevice::DisplayContext::surfaceBrush(Paint &b) {
+  brush = b;
+  viewportRectangle = {(double)offsetx, (double)offsety,
+                       (double)offsetx + (double)windowWidth,
+                       (double)offsety + (double)windowHeight};
+  state(true, 0, 0, windowWidth, windowHeight);
+}
+
+void uxdevice::DisplayContext::state(std::shared_ptr<DrawingOutput> obj) {
   REGIONS_SPIN;
-  std::size_t onum = reinterpret_cast<std::size_t>(obj);
+  std::size_t onum = reinterpret_cast<std::size_t>(obj.get());
 #if defined(CONSOLE)
   std::cout << "**--- " << onum << ", " << obj->inkRectangle.x << ", "
             << obj->inkRectangle.y << ", " << obj->inkRectangle.width << ", "
@@ -198,8 +190,18 @@ void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
   REGIONS_SPIN;
 
   if (on) {
-    _regions.push_back(CairoRegion{x, y, w, h});
+    auto it = std::find_if(_regions.begin(), _regions.end(), [=](auto &n) {
+        return n.rect.x == x && n.rect.y == y && n.rect.width == w &&
+               n.rect.height == h;
+      });
 
+    if(it==_regions.end())
+      _regions.push_back(CairoRegion{x, y, w, h});
+#if defined(CONSOLE)
+    std::cout << "****--- " << x << ", " << y << ", " << w << ", " << h
+              << std::endl
+              << std::flush;
+#endif // defined
   } else {
     while (!_regions.empty()) {
       if (!_regions.front().eval) {
@@ -212,8 +214,7 @@ void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
 }
 
 bool uxdevice::DisplayContext::state(void) {
-  DRAWABLES_ON_SPIN;
-  DRAWABLES_OFF_SPIN;
+
   REGIONS_SPIN;
 
   bool ret = false;
@@ -222,22 +223,26 @@ bool uxdevice::DisplayContext::state(void) {
     for (auto &it : _regions)
       if (!it.eval) {
         // determine if any offscreen elements are visible
+        DRAWABLES_OFF_SPIN;
         DrawingOutputCollection::iterator obj = viewportOff.begin();
         while (obj != viewportOff.end()) {
-          DrawingOutput *n = *obj;
+          std::shared_ptr<DrawingOutput> n = *obj;
           n->intersect(it._rect);
           if (n->overlap != CAIRO_REGION_OVERLAP_OUT) {
             DrawingOutputCollection::iterator next = obj;
             next++;
-
+            DRAWABLES_ON_SPIN;
             viewportOn.push_back(n);
+            DRAWABLES_ON_CLEAR;
 
             viewportOff.erase(obj);
+
             obj = next;
           } else {
             obj++;
           }
         }
+        DRAWABLES_OFF_CLEAR;
         // inform the caller that there is work to be done.
         ret = true;
 
@@ -245,8 +250,7 @@ bool uxdevice::DisplayContext::state(void) {
       }
 
   REGIONS_CLEAR;
-  DRAWABLES_OFF_CLEAR;
-  DRAWABLES_ON_CLEAR;
+
   return ret;
 }
 
@@ -261,7 +265,8 @@ void uxdevice::DisplayContext::plot(CairoRegion &plotArea) {
   // has been evaluated and ma be removed
 
   for (auto &unit : viewportOn) {
-    DrawingOutput *n = dynamic_cast<DrawingOutput *>(unit);
+    std::shared_ptr<DrawingOutput> n =
+        std::dynamic_pointer_cast<DrawingOutput>(unit);
     n->intersect(plotArea._rect);
 
     switch (n->overlap) {
@@ -269,10 +274,12 @@ void uxdevice::DisplayContext::plot(CairoRegion &plotArea) {
       plotArea.eval = true;
       break;
     case CAIRO_REGION_OVERLAP_IN: {
+      n->fnBaseSurface(*this);
       n->fnDraw(*this);
       plotArea.eval = true;
     } break;
     case CAIRO_REGION_OVERLAP_PART: {
+      n->fnCacheSurface(*this);
       n->fnDrawClipped(*this);
       plotArea.eval = true;
     } break;

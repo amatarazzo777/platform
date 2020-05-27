@@ -4,13 +4,9 @@
 using namespace std;
 using namespace uxdevice;
 
-void draw(platform &vm, double dStep);
-void drawUpdate(platform &vm, double dStep);
-void drawSimple(platform &vis);
-void drawSimple2(platform &vis);
-void drawSi(platform &vis);
 void drawText(platform &vis, double dStep);
 void drawshapes(platform &vis, double dStep);
+void drawimages(platform &vis, double dStep);
 void testStart(string_view sFunc) {
 #if defined(CONSOLE)
   cout << sFunc << endl;
@@ -199,6 +195,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // starts rendering and message threads
   // parameter notes frame per second
   vis.startProcessing(60);
+
   std::random_device rd;
   std::mt19937 gen(rd());
 
@@ -215,36 +212,43 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
 
-  // items may be inserted before window open
-  // the information goes in but is not processed
-  // until after window is open.
-  // draw(vis, 1);
-  // drawSi(vis);
-  // drawSimple(vis);
-  // drawSimple2(vis);
-
   drawshapes(vis, 1);
 
-  // drawText(vis, 1);
-
-  // draw(vis, 1);
+   drawText(vis, 1);
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
   // when the user closes the window, the switch will be false
   double dStep = 1;
-  while (vis.processing()) {
+  // measure processing time
+  std::chrono::system_clock::time_point start =
+      std::chrono::high_resolution_clock::now();
 
+  while (vis.processing()) {
+  for(int i=0;i<10;i++) {
     drawshapes(vis, 1);
+    drawimages(vis,1);
     drawText(vis, 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+  }
+
 
     // sleep for some time to not take over cpu,
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> diff = end - start;
+
+    if(diff.count()>10000) {
     Paint p =
-        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
-              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
-    vis.brush(p);
-    vis.clear();
+       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+    vis.surfaceBrush(p);
+      vis.clear();
+      start=end;
+    }
   }
 
   return 0;
@@ -255,189 +259,82 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 // focus input.
 void eventDispatch(const event &evt) {}
 
-void drawSi(platform &vis) {
-
-  vis.antiAlias(antialias::subPixel);
-
-  vis.textAlignment(alignment::left);
-  // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans normal 34");
-  vis.textOutline("darkred", 1);
-  vis.textFill("red");
-  vis.textShadow("black");
-  // area is a rounded box 120,120 are the corner pixel sizes.
-  // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(0, 0, 800, 500, 120, 120);
-  vis.text(
-      "The glistening oil coats upon the ravens are a remark of healthiness. "
-      "One that is pronounced during the day and in the moonlight. ");
-  vis.drawText();
-}
-
-void drawSimple(platform &vis) {
-
-  vis.antiAlias(antialias::subPixel);
-
-  vis.textAlignment(alignment::left);
-  // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans normal 24");
-  vis.textOutline("darkred", 1.5);
-  vis.textFill("red");
-  // vis.textShadow("black", 5);
-
-  // area is a rounded box 120,120 are the corner pixel sizes.
-  // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(0, 0, 800, 300, 120, 120);
-  vis.text("The sun sets casting its refraction upon the mountain side. ");
-  vis.drawText();
-
-  // vis.textShadow("black", 3);
-  vis.font("DejaVu Sans normal 24");
-  for (int i = 0; i < 10; i++) {
-
-    vis.area(0, 100 + i * 60, 100, 48, 50, 10);
-    vis.text("scroll ");
-    vis.background(0, 0, 0, 100, {{"yellow"}, {.7, "brown"}});
-    vis.pen("white");
-    vis.drawArea();
-    vis.save();
-    vis.translate(5, 7);
-    vis.textOutline("darkred", .5);
-    vis.textFill("green");
-    vis.drawText();
-    vis.restore();
-  }
-
-  vis.area(200, 100, 500, 500);
-  vis.image("/home/anthony/development/platform/image/23.svg");
-  vis.drawImage();
-}
-void drawSimple2(platform &vis) {
-  // circle
-  vis.area(400, 200, 100);
-  vis.background(0, 0, 0, 100, {{"yellow"}, {"green"}, {"orange"}, {"blue"}});
-  vis.pen(0, 0, 6, 2, {{"white"}, {"red"}});
-  vis.lineWidth(2);
-  vis.drawArea();
-
-  // round box
-  vis.area(0, 200, 200, 100, 29, 20);
-
-  vis.background(0, 0, 5, 10, {{"lime"}, {"red"}});
-
-  // linear gradient, rgb (0 - 1) provided., or can use
-  //  red, green, blue , and alpha
-  vis.pen(0, 0, 0, 100, {{"yellow"}, {"green"}, {"orange"}, {"blue"}});
-  vis.lineWidth(13);
-  vis.drawArea();
-
-  // circle
-  vis.area(200, 200, 100);
-  vis.background(0, 0, 0, 100, {{"yellow"}, {.8, "lightbrown"}, {"brown"}});
-  vis.pen(0, 0, 0, 100, {{"yellow"}, {"orange"}});
-  vis.lineWidth(5);
-  vis.drawArea();
-
-  // circle
-  vis.area(300, 200, 100);
-  Paint bugs2 = Paint("/home/anthony/development/platform/image/bug.png");
-  vis.lineWidth(4);
-  bugs2.extend(extendType::reflect);
-  bugs2.filter(filterType::bilinear);
-  vis.background(bugs2);
-  vis.pen("orange");
-  vis.drawArea();
-}
-
 void drawText(platform &vis, double dStep) {
-  vis.textShadow("black");
-  vis.textAlignment(alignment::left);
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> scrn(0, 400.0);
+  std::uniform_real_distribution<> dcir(25.0, 100.0);
+  std::uniform_real_distribution<> color(.5, 1.0);
+  std::uniform_real_distribution<> opac(.7, 1);
+  std::uniform_real_distribution<> lw(0, 10.0);
+  std::uniform_real_distribution<> coord(425.0, 600.0);
+  std::uniform_int_distribution<> shape(1, 4);
+  vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen), dcir(gen));
 
-  // name text that is to be displayed
-  vis.text(
-      "The sun sets casting its refraction upon the mountain side. "
-      "The glistening oil coats upon the ravens are a remark of healthiness. "
-      "One that is pronounced during the day and in the moonlight. "
-      "At home, a cave dweller sees this all at once. These are indeed fine "
-      "things. "
-      "The warmth of the sun decays as thousands of brilliant stars dictate "
-      "the continual persistence of the system.  A remarkable sight. A "
-      "heavenly "
-      "home.");
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> scrn(0, 800.0);
-    std::uniform_real_distribution<> dcir(25.0, 100.0);
-    std::uniform_real_distribution<> color(.5, 1.0);
-    std::uniform_real_distribution<> opac(.7, 1);
-    std::uniform_real_distribution<> lw(0, 10.0);
-    std::uniform_real_distribution<> coord(25.0, 100.0);
-    std::uniform_int_distribution<> shape(1, 4);
-    switch (shape(gen)) {
-    case 1:
-      vis.areaCircle(scrn(gen), scrn(gen), dcir(gen));
-      break;
-    case 2:
-      vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
-      break;
-    case 3:
-      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen), dcir(gen),
-               dcir(gen));
-      break;
-    case 4:
-      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen));
-      break;
-    }
 #define _C color(gen)
 #define _A opac(gen)
 
-    vis.textFill(
-        coord(gen), coord(gen), coord(gen), coord(gen),
-        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  vis.background(
+      coord(gen), coord(gen), coord(gen), coord(gen),
+      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
 
-    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
-            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
-
-  // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans Bold 24");
+  vis.pen(coord(gen), coord(gen), coord(gen), coord(gen),
+          {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  vis.lineWidth(lw(gen));
 
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen),scrn(gen),scrn(gen));
+  // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
+  //vis.drawArea();
+  std::uniform_int_distribution<> info(1, 5);
+  switch (info(gen)) {
+  case 1:
+    vis.text("Silver colored crafts from another galaxy seem "
+             "curiously welcomed as the memorizing audio waves "
+             "produced a canny type of music. A simple ten note. ");
+    break;
+  case 2:
+    vis.text(
+        "The color of text can be a choice. Yet the appearance is a common "
+        "desire.");
+    break;
+  case 3:
+    vis.text("Planets orbit the mass, but this is inconsequential of "
+             "the heat provided. As children, we find a balance. ");
+    break;
+  case 4:
+    vis.text("The sun sets casting its refraction upon the mountain side. ");
+    break;
+  case 5:
+    vis.text(
+        "The sun sets casting its refraction upon the mountain side. "
+        "The glistening oil coats upon the ravens are a remark of healthiness. "
+        "One that is pronounced during the day and in the moonlight. "
+        "At home, a cave dweller sees this all at once. These are indeed fine "
+        "things. "
+        "The warmth of the sun decays as thousands of brilliant stars dictate "
+        "the continual persistence of the system.  A remarkable sight. A "
+        "heavenly "
+        "home.");
+    break;
+  }
 
-  vis.drawText();
+  // set the font name according to pango spi. see pango font description.
+  vis.font("DejaVu Sans Bold 14");
+  std::uniform_int_distribution<> fill(1, 2);
 
-  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
-  vis.text("Silver colored crafts from another galaxy seem "
-           "curiously welcomed as the memorizing audio waves "
-           "produced a canny type of music. A simple ten note ");
-  vis.drawText();
+  vis.textShadow("black");
+  vis.textAlignment(alignment::left);
 
   vis.textFill(
-        coord(gen), coord(gen), coord(gen), coord(gen),
-        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+      coord(gen), coord(gen), coord(gen), coord(gen),
+      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  vis.textFill(stripes);
 
+  vis.textOutline(
+      coord(gen), coord(gen), coord(gen), coord(gen),
+      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
 
-    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
-            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
-  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
-
-  vis.text("The color of text can be a choice. Yet the appearance is a common desire.");
-  vis.drawText();
-
-  vis.font("DejaVu Sans Bold 44");
-  vis.area(scrn(gen),scrn(gen),scrn(gen),scrn(gen));
-  vis.text("Planets orbit the mass, but this is inconsequential of "
-           "the heat provided. As children, we find a balance. ");
-
-  vis.textFill(
-        coord(gen), coord(gen), coord(gen), coord(gen),
-        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
-
-
-    vis.textOutline(coord(gen), coord(gen), coord(gen), coord(gen),
-            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
   vis.drawText();
 }
 
@@ -447,12 +344,12 @@ void drawshapes(platform &vis, double dStep) {
   for (int c = 0; c < 10; c++) {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> scrn(0, 800.0);
+    std::uniform_real_distribution<> scrn(0, 600);
     std::uniform_real_distribution<> dcir(25.0, 100.0);
     std::uniform_real_distribution<> color(0, 1.0);
     std::uniform_real_distribution<> opac(.3, .6);
-    std::uniform_real_distribution<> lw(0, 10.0);
-    std::uniform_real_distribution<> coord(25.0, 100.0);
+    std::uniform_real_distribution<> lw(2, 10.0);
+    std::uniform_real_distribution<> coord(55.0, 100.0);
     std::uniform_int_distribution<> shape(1, 4);
     switch (shape(gen)) {
     case 1:
@@ -462,11 +359,11 @@ void drawshapes(platform &vis, double dStep) {
       vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
       break;
     case 3:
-      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen), dcir(gen),
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen),
                dcir(gen));
       break;
     case 4:
-      vis.area(scrn(gen), scrn(gen), scrn(gen), scrn(gen));
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen));
       break;
     }
 #define _C color(gen)
@@ -483,206 +380,51 @@ void drawshapes(platform &vis, double dStep) {
   }
 }
 
-/************************************************************************
-************************************************************************/
-void draw(platform &vis, double dStep) {
+void drawimages(platform &vis, double dStep) {
+  for(int i=0;i<10;i++) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> scrn(0, 600);
+    std::uniform_real_distribution<> dcir(25.0, 100.0);
+    std::uniform_real_distribution<> color(0, 1.0);
+    std::uniform_real_distribution<> opac(.3, .6);
+    std::uniform_real_distribution<> lw(2, 10.0);
+    std::uniform_real_distribution<> coord(55.0, 100.0);
+    std::uniform_int_distribution<> shape(1, 4);
+    switch (shape(gen)) {
+    case 1:
+      vis.areaCircle(scrn(gen), scrn(gen), dcir(gen));
+      break;
+    case 2:
+      vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
+      break;
+    case 3:
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen),
+               dcir(gen));
+      break;
+    case 4:
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen));
+      break;
+    }
 
-  vis.antiAlias(antialias::subPixel);
-  // area is a rounded box 120,120 are the corner pixel sizes.
-  // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(0, 0, 800, 600, 120, 120);
-
-  // create a paint object. paint objects may define the fill of an area, or
-  // ther outline of an are. this includes both area _NAME_ and font api. fonts
-  // can be filled with a color, repeating image, SVG requires that one place
-  // the width and height of the render. Gradient may also provide thefill
-  // pattern as well as the opaque and translucent color. colors can be provided
-  // in 24bit, string and rgb component at 0-1 per channel. This is all due to
-  // the cairo graphics api flexibility.
-
-  vis.textAlignment(alignment::left);
-
-  // name text that is to be displayed
-  vis.text(
-      "The sun sets casting its refraction upon the mountain side. "
-      "The glistening oil coats upon the ravens are a remark of healthiness. "
-      "One that is pronounced during the day and in the moonlight. "
-      "At home, a cave dweller sees this all at once. These are indeed fine "
-      "things. "
-      "The warmth of the sun decays as thousands of brilliant stars dictate "
-      "the continual persistence of the system.  A remarkable sight. A "
-      "heavenly "
-      "home.");
-
-  // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans Bold 24");
-
-  // area is a rounded box 120,120 are the corner pixel sizes.
-  // rectangle is x-0,y=0 width=800, height = 600
-  vis.area(0, 0, 800, 600, 120, 120);
-
-  // create a paint object. paint objects may define the fill of an area, or
-  // ther outline of an are. this includes both area _NAME_ and font api. fonts
-  // can be filled with a color, repeating image, SVG requires that one place
-  // the width and height of the render. Gradient may also provide thefill
-  // pattern as well as the opaque and translucent color. colors can be provided
-  // in 24bit, string and rgb component at 0-1 per channel. This is all due to
-  // the cairo graphics api flexibility.
-  Paint tiger =
-      Paint("/home/anthony/development/platform/image/23.svg", 50, 50);
-  tiger.rotate(PI / 180 * 10);
-  tiger.extend(extendType::reflect);
-  tiger.filter(filterType::bilinear);
-
-  vis.pen("lime");
-  vis.lineWidth(5);
-  vis.background(tiger);
-  vis.drawArea();
-
-  vis.pen("white");
-  vis.lineWidth(1);
-  vis.background(Paint(.3, .3, .3, .7));
-  vis.drawArea();
-
-  vis.textFill(0, 0, 300, 0, {{"yellow"}, {"purple"}});
-  vis.textShadow("grey");
-  vis.drawText();
-
-  vis.areaEllipse(00, 300, 500, 100);
-  Paint bugs3 = Paint("/home/anthony/development/platform/image/text.png");
-  vis.background(bugs3);
-  vis.drawArea();
-
-  // button translated from svg file
-  vis.area(25.702381, 108.0119, 167.06548, 61.988094, 17.41297, 14.174099);
-  vis.background(0, 0, .7, .58);
-  vis.lineWidth(.86);
-  vis.pen(0, .6, 8, 1);
-  vis.drawArea();
-
-  vis.pen(1, 1, 1);
-  vis.textAlignment(alignment::center);
-  vis.text("OK");
-  vis.textShadow(0, 0, 0);
-  vis.drawText();
-
-  vis.area(25.702381, 108.0119, 167.06548, 61.988094, 17.41297, 14.174099);
-  vis.background(Paint(0, 0, 0, 25, {{0, 0, 0, .5, 1}, {1, 0, 0, .5, 0}}));
-  vis.drawArea();
-
-  // draw svg and images
-  vis.area(15, 300, 200, 220);
-  vis.image("/home/anthony/development/platform/image/button2.svg");
-  vis.drawImage();
-
-  // inline image
-  vis.area(215, 300, 200, 220);
-  vis.image(stripes);
-  vis.drawImage();
-
-  // inline SVG
-  vis.area(05, 0, 800, 620);
-  vis.image(sSVG);
-  vis.drawImage();
-
-  vis.area(400, 300, 200, 200);
-  vis.image("/home/anthony/development/platform/image/drawing.svg");
-  vis.drawImage();
-
-  vis.area(600, 300, 200, 200);
-  vis.image("/home/anthony/development/platform/image/23.svg");
-  vis.drawImage();
-
-  // draw objects in a row
-  // color stops can name the colors in various forms,
-  // these are passed as a vector of color stops.
-  // when the offset is not given, it is automatically
-  // added. This shortens the gradient creation.
-  // The gradients below are linear. The first part is the
-  // line.
-
-  // circle
-  vis.area(400, 200, 100);
-  vis.background(0, 0, 0, 100,
-                 {{"white"},
-                  {.2, "red"},
-                  {.8, "darkred", .5},
-                  {.9, "maroon", .4},
-                  {"black"}});
-  vis.pen(0, 0, 6, 2, {{"white"}, {"red"}});
-  vis.lineWidth(2);
-  vis.drawArea();
-
-  // round box
-  vis.area(0, 200, 200, 100, 29, 20);
-
-  vis.background(0, 0, 5, 10, {{"lime"}, {"red"}});
-
-  // linear gradient, rgb (0 - 1) provided., or can use
-  //  red, green, blue , and alpha
-  vis.pen(0, 0, 0, 100, {{0, 0, 1}, {0, 0, .30}});
-  vis.lineWidth(3);
-  vis.drawArea();
-
-  // circle
-  vis.area(300, 200, 100);
-  Paint bugs2 = Paint("/home/anthony/development/platform/image/bug.png");
-  vis.lineWidth(4);
-  bugs2.extend(extendType::reflect);
-  // bugs2.filter(filterType::bilinear);
-  vis.background(bugs2);
-  vis.pen("orange");
-  vis.drawArea();
-
-  // draw text
-  vis.font("DejaVu Sans Bold 44");
-  vis.textShadow("red", 5, 2, 2);
-
-  // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
-  // gradient TEXT
-  vis.area(0, 400, 300, 300);
-  vis.text("Text Gradient");
-  vis.textFill(
-      0, 0, 300, 300,
-      {{"purple"}, {"red"}, {"orange"}, {"green"}, {"blue"}, {"lightbrown"}});
-
-  // the gradient repeats, so a smaller line will create a
-  // stripe.
-  vis.textOutline(0, 0, 5, 10, {{"pink", .4}, {"red", .6}}, 3);
-  vis.drawText();
-
-  vis.font("DejaVu Sans Bold 44");
-  vis.area(300, 400, 300, 300);
-  vis.text("Text Textured");
-
-  // use base 64 inline image string as texture fill
-  vis.textFill(stripes);
-  vis.textOutline("blue", 3);
-  vis.drawText();
-}
-
-void drawUpdate(platform &vis, double dStep) {
-  vis.textAlignment(alignment::left);
-  stringstream ss;
-  ss << rand() % 255;
-
-  vis.text(ss);
-
-  double x = rand() % 800;
-  double y = rand() % 600;
-  vis.area(x, y, 30, 30);
-
-  vis.font("DejaVu Sans Bold 15");
-  vis.pen(rand() % 255 / 255.0, rand() % 255 / 255.0, rand() % 255 / 255.0);
-  vis.textShadowNone();
-  vis.textOutlineNone();
-  vis.textFillNone();
-
-  vis.drawText();
-
-  // objArea=vis.area(0, 0, 800, 600, 120, 120);
-
-  // objArea.update(0, 0, 600, 600, 20, 20);
-  // objArea.replace( platform::area, 0, 0, 800);
-  // objArea.delete();
+    std::uniform_int_distribution<> imgname(1, 5);
+    switch (imgname(gen)) {
+    case 1:
+      vis.image("/home/anthony/development/platform/image/23.svg");
+      break;
+    case 2:
+      vis.image("/home/anthony/development/platform/image/art.png");
+      break;
+    case 3:
+      vis.image("/home/anthony/development/platform/image/bug.png");
+      break;
+    case 4:
+      vis.image("/home/anthony/development/platform/image/bugu.png");
+      break;
+    case 5:
+      vis.image("/home/anthony/development/platform/image/starbubble.svg");
+      break;
+    }
+    vis.drawImage();
+  }
 }

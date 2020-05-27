@@ -34,10 +34,13 @@ class FUNCTION;
 class OPTION_FUNCTION;
 class DisplayUnit;
 class DrawingOutput;
-typedef std::list<DisplayUnit *> DisplayUnitCollection;
-typedef std::list<DisplayUnit *>::iterator DisplayUnitCollectionIter;
-typedef std::list<DrawingOutput *> DrawingOutputCollection;
-typedef std::list<DrawingOutput *>::iterator DrawingOutputCollectionIter;
+
+typedef std::list<std::shared_ptr<DisplayUnit>> DisplayUnitCollection;
+typedef std::list<std::shared_ptr<DisplayUnit>>::iterator
+    DisplayUnitCollectionIter;
+typedef std::list<std::shared_ptr<DrawingOutput>> DrawingOutputCollection;
+typedef std::list<std::shared_ptr<DrawingOutput>>::iterator
+    DrawingOutputCollectionIter;
 
 class DisplayContext;
 typedef std::function<void(DisplayContext &context)> DrawLogic;
@@ -46,18 +49,18 @@ typedef std::list<OPTION_FUNCTION *> CairoOptionFn;
 
 class CurrentUnits {
 public:
-  AREA *area = nullptr;
-  STRING *text = nullptr;
-  IMAGE *image = nullptr;
-  FONT *font = nullptr;
-  ANTIALIAS *antialias = nullptr;
-  TEXTSHADOW *textshadow = nullptr;
-  TEXTFILL *textfill = nullptr;
-  TEXTOUTLINE *textoutline = nullptr;
-  PEN *pen = nullptr;
-  BACKGROUND *background = nullptr;
-  ALIGN *align = nullptr;
-  EVENT *event = nullptr;
+  std::shared_ptr<AREA> area = nullptr;
+  std::shared_ptr<STRING> text = nullptr;
+  std::shared_ptr<IMAGE> image = nullptr;
+  std::shared_ptr<FONT> font = nullptr;
+  std::shared_ptr<ANTIALIAS> antialias = nullptr;
+  std::shared_ptr<TEXTSHADOW> textshadow = nullptr;
+  std::shared_ptr<TEXTFILL> textfill = nullptr;
+  std::shared_ptr<TEXTOUTLINE> textoutline = nullptr;
+  std::shared_ptr<PEN> pen = nullptr;
+  std::shared_ptr<BACKGROUND> background = nullptr;
+  std::shared_ptr<ALIGN> align = nullptr;
+  std::shared_ptr<EVENT> event = nullptr;
   CairoOptionFn options = {};
 };
 
@@ -101,6 +104,7 @@ public:
 
 public:
   DisplayContext(void) {}
+
   DisplayContext(const DisplayContext &other) { *this = other; }
   DisplayContext &operator=(const DisplayContext &other) {
     windowX = other.windowX;
@@ -155,34 +159,42 @@ public:
   void flush(void);
 
   void resizeSurface(const int w, const int h);
+
   void offsetPosition(const int x, const int y);
-  void collectables(DisplayUnitCollection *obj);
+  void surfaceBrush(Paint &b);
 
   void render(void);
-  void state(DrawingOutput *obj);
+  void addDrawable(std::shared_ptr<DrawingOutput> _obj);
+
+  void state(std::shared_ptr<DrawingOutput> obj);
   void state(bool on, int x = 0, int y = 0, int w = 0, int h = 0);
   bool state(void);
+
   void clear(void);
 
   CurrentUnits currentUnits = CurrentUnits();
-  void setUnit(AREA *_area) { currentUnits.area = _area; };
-  void setUnit(STRING *_text) { currentUnits.text = _text; };
-  void setUnit(IMAGE *_image) { currentUnits.image = _image; };
-  void setUnit(FONT *_font) { currentUnits.font = _font; };
-  void setUnit(ANTIALIAS *_antialias) { currentUnits.antialias = _antialias; };
-  void setUnit(TEXTSHADOW *_textshadow) {
+  void setUnit(std::shared_ptr<AREA> _area) { currentUnits.area = _area; };
+  void setUnit(std::shared_ptr<STRING> _text) { currentUnits.text = _text; };
+  void setUnit(std::shared_ptr<IMAGE> _image) { currentUnits.image = _image; };
+  void setUnit(std::shared_ptr<FONT> _font) { currentUnits.font = _font; };
+  void setUnit(std::shared_ptr<ANTIALIAS> _antialias) {
+    currentUnits.antialias = _antialias;
+  };
+  void setUnit(std::shared_ptr<TEXTSHADOW> _textshadow) {
     currentUnits.textshadow = _textshadow;
   };
-  void setUnit(TEXTFILL *_textfill) { currentUnits.textfill = _textfill; };
-  void setUnit(TEXTOUTLINE *_textoutline) {
+  void setUnit(std::shared_ptr<TEXTFILL> _textfill) {
+    currentUnits.textfill = _textfill;
+  };
+  void setUnit(std::shared_ptr<TEXTOUTLINE> _textoutline) {
     currentUnits.textoutline = _textoutline;
   };
-  void setUnit(PEN *_pen) { currentUnits.pen = _pen; };
-  void setUnit(BACKGROUND *_background) {
+  void setUnit(std::shared_ptr<PEN> _pen) { currentUnits.pen = _pen; };
+  void setUnit(std::shared_ptr<BACKGROUND> _background) {
     currentUnits.background = _background;
   };
-  void setUnit(ALIGN *_align) { currentUnits.align = _align; };
-  void setUnit(EVENT *_event) { currentUnits.event = _event; };
+  void setUnit(std::shared_ptr<ALIGN> _align) { currentUnits.align = _align; };
+  void setUnit(std::shared_ptr<EVENT> _event) { currentUnits.event = _event; };
 
 public:
   short windowX = 0;
@@ -191,9 +203,10 @@ public:
   unsigned short windowHeight = 0;
   bool windowOpen = false;
   Paint brush = Paint("white");
-  void addDrawable(DrawingOutput *_obj);
 
+#pragma pack(push, 1)
   cairo_t *cr = nullptr;
+#pragma pack(pop)
 
   cairo_rectangle_t viewportRectangle = cairo_rectangle_t();
 
@@ -201,17 +214,17 @@ private:
   std::list<CairoRegion> _regions = {};
   typedef std::list<CairoRegion>::iterator RegionIter;
 
-  typedef std::tuple<int, int> _WH;
-  std::list<_WH> _surfaceRequests = {};
-  typedef std::list<_WH>::iterator SurfaceRequestsIter;
-
   std::atomic_flag lockRegions = ATOMIC_FLAG_INIT;
 #define REGIONS_SPIN while (lockRegions.test_and_set(std::memory_order_acquire))
 #define REGIONS_CLEAR lockRegions.clear(std::memory_order_release)
 
+  typedef std::tuple<int, int> _WH;
+  std::list<_WH> _surfaceRequests = {};
+  typedef std::list<_WH>::iterator SurfaceRequestsIter;
   std::atomic_flag lockSurfaceRequests = ATOMIC_FLAG_INIT;
 #define SURFACE_REQUESTS_SPIN                                                  \
   while (lockSurfaceRequests.test_and_set(std::memory_order_acquire))
+
 #define SURFACE_REQUESTS_CLEAR                                                 \
   lockSurfaceRequests.clear(std::memory_order_release)
 
@@ -219,6 +232,14 @@ private:
 
 public:
 #if defined(__linux__)
+  void lock(bool b) {
+    if(b) {
+      SURFACE_REQUESTS_SPIN;
+    } else {
+      SURFACE_REQUESTS_CLEAR;
+    }
+  }
+
   Display *xdisplay = nullptr;
   xcb_connection_t *connection = nullptr;
   xcb_screen_t *screen = nullptr;

@@ -23,7 +23,7 @@ void uxdevice::DrawingOutput::invoke(cairo_t *cr) {
 
   // for (auto &fn : options)
   // fn->fnOption(cr);
-    bprocessed = true;
+  bprocessed = true;
 }
 
 void uxdevice::DrawingOutput::intersect(cairo_rectangle_t &r) {
@@ -32,15 +32,19 @@ void uxdevice::DrawingOutput::intersect(cairo_rectangle_t &r) {
   cairo_rectangle_int_t rInt = {(int)r.x, (int)r.y, (int)r.width,
                                 (int)r.height};
   cairo_region_t *rectregion = cairo_region_create_rectangle(&rInt);
-  overlap = cairo_region_contains_rectangle(rectregion, &inkRectangle);
+  cairo_rectangle_int_t objrect = {inkRectangle.x, inkRectangle.y,
+                                   inkRectangle.width, inkRectangle.height};
+
+  overlap = cairo_region_contains_rectangle(rectregion, &objrect);
   if (overlap == CAIRO_REGION_OVERLAP_PART) {
-    cairo_region_t *dst = cairo_region_create_rectangle(&inkRectangle);
+    cairo_region_t *dst = cairo_region_create_rectangle(&objrect);
     cairo_region_intersect(dst, rectregion);
     cairo_region_get_extents(dst, &intersection);
     _intersection = {(double)intersection.x, (double)intersection.y,
                      (double)intersection.width, (double)intersection.height};
     cairo_region_destroy(dst);
   }
+
   cairo_region_destroy(rectregion);
 }
 void uxdevice::DrawingOutput::intersect(CairoRegion &rectregion) {
@@ -145,9 +149,9 @@ bool uxdevice::DRAWTEXT::setLayoutOptions(cairo_t *cr) {
   // any changes
   if (layoutSerial != pango_layout_get_serial(layout)) {
     pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
-
-    inkRectangle = {(int)a.x, (int)a.y, logical_rect.width,
-                    logical_rect.height};
+    int tw = std::min((double)logical_rect.width, a.w);
+    int th = std::min((double)logical_rect.height, a.h);
+    inkRectangle = {(int)a.x, (int)a.y, tw, th};
     _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
                      (double)inkRectangle.width, (double)inkRectangle.height};
 
@@ -179,9 +183,6 @@ void uxdevice::DRAWTEXT::createShadow(void) {
     cairo_surface_destroy(shadowImage);
     shadowImage = blurred;
 #endif
-
-    cairo_destroy(shadowCr);
-    shadowCr=nullptr;
   }
 }
 
@@ -238,11 +239,9 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
   if (textshadow) {
     fnShadow = [=](cairo_t *cr, AREA &a) {
       createShadow();
-      if(shadowImage) {
-        cairo_set_source_surface(cr, shadowImage, a.x, a.y);
-        cairo_rectangle(cr, a.x, a.y, a.w, a.h);
-        cairo_fill(cr);
-      }
+      cairo_set_source_surface(cr, shadowImage, a.x, a.y);
+      cairo_rectangle(cr, a.x, a.y, a.w, a.h);
+      cairo_fill(cr);
     };
   } else {
 
@@ -312,7 +311,11 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
     };
   }
 
-  auto fnthread = [=, this, &context]() {
+  auto fnCache = [=](DisplayContext &context) {
+    // if the item is already cached, return.
+    if (bRenderBufferCached)
+      return;
+
     // create off screen buffer
     setLayoutOptions(context.cr);
     rendered = cairo_surface_create_similar(
@@ -327,45 +330,84 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
     setLayoutOptions(cr);
     stat = cairo_status(cr);
     AREA a = *area;
+#if 0
+    if(textfill)
+      textfill->translate(-a.x,-a.y);
+    if(textoutline)
+      textoutline->translate(-a.x,-a.y);
+#endif // 0
     a.x = 0;
     a.y = 0;
-    a.w = _inkRectangle.width;
-    a.h = _inkRectangle.height;
 
     fn(cr, a);
     stat = cairo_status(cr);
 
     cairo_surface_flush(rendered);
-    cairo_destroy(cr);
-    cr=nullptr;
 
     stat = cairo_surface_status(rendered);
 
-    auto drawfn = [this](DisplayContext &context) {
-      if(rendered) {
+    auto drawfn = [=](DisplayContext &context) {
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, rendered, area->x, area->y);
-      cairo_rectangle(context.cr, _inkRectangle.x, _inkRectangle.y,
-                      _inkRectangle.width, _inkRectangle.height);
+      double tw, th;
+      tw = std::min(_inkRectangle.width, area->w);
+      th = std::min(_inkRectangle.height, area->h);
+
+      cairo_rectangle(context.cr, _inkRectangle.x, _inkRectangle.y, tw, th);
       cairo_fill(context.cr);
-      }
     };
-    auto fnClipping = [this](DisplayContext &context) {
-      if(rendered) {
+    auto fnClipping = [=](DisplayContext &context) {
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, rendered, area->x, area->y);
       cairo_rectangle(context.cr, _intersection.x, _intersection.y,
                       _intersection.width, _intersection.height);
       cairo_fill(context.cr);
-      }
     };
 
     fnDraw = std::bind(drawfn, _1);
     fnDrawClipped = std::bind(fnClipping, _1);
     bRenderBufferCached = true;
-    context.addDrawable(this);
   };
-  renderthread = std::make_unique<std::thread>(fnthread);
+
+  // two function provide mode switching for the rendering.
+  // a cache surface is a new xcb surface that can be threaded in creation
+  // base surface issues the drawing commands to the base window drawing cairo
+  // context. base surface creation is not threaded.
+  fnCacheSurface = fnCache;
+
+  // the base option rendered contains two functions that rendering using the
+  // cairo api to the base surface context. One is for clipping and one without.
+  auto fnBase = [=](DisplayContext &context) {
+    setLayoutOptions(context.cr);
+
+    // switching to base context cairo draw, free memory
+    if (rendered) {
+      cairo_surface_destroy(rendered);
+      rendered = nullptr;
+      cairo_destroy(cr);
+      cr = nullptr;
+    }
+    auto drawfn = [=](DisplayContext &context) {
+      DrawingOutput::invoke(context.cr);
+      fn(context.cr, *area);
+    };
+    auto fnClipping = [=](DisplayContext &context) {
+      cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                      _intersection.width, _intersection.height);
+      cairo_clip(context.cr);
+      DrawingOutput::invoke(context.cr);
+      fn(context.cr, *area);
+      cairo_reset_clip(context.cr);
+    };
+
+    fnDraw = std::bind(drawfn, _1);
+    fnDrawClipped = std::bind(fnClipping, _1);
+    bRenderBufferCached = false;
+  };
+
+  fnBaseSurface = fnBase;
+  setLayoutOptions(context.cr);
+
   bprocessed = true;
 }
 
@@ -374,8 +416,6 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
 \brief reads the image and creates a cairo surface image.
 */
 void uxdevice::IMAGE::invoke(DisplayContext &context) {
-  // set the unit
-  context.setUnit(this);
 
   if (bLoaded)
     return;
@@ -414,17 +454,17 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
     error(err);
     return;
   }
-  auto fnthread = [=, &context](void) {
+  // set the ink area.
+  const AREA &a = *area;
+  inkRectangle = {(int)a.x, (int)a.y, (int)a.w, (int)a.h};
+  _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
+                   (double)inkRectangle.width, (double)inkRectangle.height};
+  hasInkExtents = true;
+  auto fnCache = [=](DisplayContext &context) {
     if (!image->bLoaded) {
       image->loadthread->join();
     }
 
-    // set the ink area.
-    const AREA &a = *area;
-    inkRectangle = {(int)a.x, (int)a.y, (int)a.w, (int)a.h};
-    _inkRectangle = {(double)inkRectangle.x, (double)inkRectangle.y,
-                     (double)inkRectangle.width, (double)inkRectangle.height};
-    hasInkExtents = true;
     // set directly callable rendering function.
     auto fn = [=](DisplayContext &context) {
       DrawingOutput::invoke(context.cr);
@@ -443,9 +483,15 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
     fnDraw = std::bind(fn, _1);
     fnDrawClipped = std::bind(fnClipping, _1);
     bRenderBufferCached = true;
-    context.addDrawable(this);
   };
-  renderthread = std::make_unique<std::thread>(fnthread);
+
+  // two function provide mode swtiching for the rendering.
+  // a cache surface is a new xcb surface wthat can be threaded in creation
+  // base surface issues the drawing commands to the base window drawing cairo
+  // context
+  fnCacheSurface = fnCache;
+  fnBaseSurface = fnCache;
+
   bprocessed = true;
 }
 
@@ -547,6 +593,7 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
   } break;
 
   case areaType::roundedRectangle: {
+    // from SVGREN
     fn = [=](cairo_t *cr, AREA a) {
       DrawingOutput::invoke(cr);
       fnadjustForStroke(cr, a);
@@ -619,22 +666,25 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
   } break;
   }
 
-  // start a thread that will render offscreen.
-  auto fnthread = [=, &context]() {
+  // two function provide mode switching for the rendering.
+  // a cache surface is a new xcb surface that can be threaded in creation
+  auto fnCache = [=](DisplayContext &context) {
+    if (bRenderBufferCached)
+      return;
+
     rendered = cairo_surface_create_similar(
         context.xcbSurface, CAIRO_CONTENT_COLOR_ALPHA, _inkRectangle.width,
         _inkRectangle.height);
 
     cairo_surface_type_t st = cairo_surface_get_type(rendered);
     cr = cairo_create(rendered);
+
     AREA a = *area;
     a.x = 0;
     a.y = 0;
 
     fn(cr, a);
     cairo_surface_flush(rendered);
-    cairo_destroy(cr);
-    cr=nullptr;
 
     auto drawfn = [=](DisplayContext &context) {
       DrawingOutput::invoke(context.cr);
@@ -654,10 +704,39 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
     fnDraw = std::bind(drawfn, _1);
     fnDrawClipped = std::bind(fnClipping, _1);
     bRenderBufferCached = true;
-    context.addDrawable(this);
+  };
+  fnCacheSurface = fnCache;
+
+      // base surface issues the drawing commands to the base window drawing
+      // cairo context
+
+  auto fnBase = [=](DisplayContext &context) {
+    auto drawfn = [=](DisplayContext &context) {
+      DrawingOutput::invoke(context.cr);
+      fn(context.cr, *area);
+    };
+    auto fnClipping = [=](DisplayContext &context) {
+      DrawingOutput::invoke(context.cr);
+      cairo_rectangle(context.cr, _intersection.x, _intersection.y,
+                      _intersection.width, _intersection.height);
+      cairo_clip(context.cr);
+      fn(context.cr, *area);
+      cairo_reset_clip(context.cr);
+    };
+
+    fnDraw = std::bind(drawfn, _1);
+    fnDrawClipped = std::bind(fnClipping, _1);
+
+    if (bRenderBufferCached) {
+      cairo_surface_destroy(rendered);
+      rendered = nullptr;
+      cairo_destroy(cr);
+      cr = nullptr;
+      bRenderBufferCached = false;
+    }
   };
 
-  renderthread = std::make_unique<std::thread>(fnthread);
+  fnBaseSurface = fnBase;
 
   bprocessed = true;
 }
