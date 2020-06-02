@@ -46,6 +46,10 @@ class DisplayContext;
 typedef std::function<void(DisplayContext &context)> DrawLogic;
 
 typedef std::list<OPTION_FUNCTION *> CairoOptionFn;
+typedef struct _DRAWBUFFER {
+  cairo_t *cr = nullptr;
+  cairo_surface_t *rendered = nullptr;
+} DRAWBUFFER;
 
 class CurrentUnits {
 public:
@@ -69,17 +73,17 @@ public:
   class CairoRegion {
   public:
     CairoRegion() = delete;
-    CairoRegion(int x, int y, int w, int h) {
+    CairoRegion(bool bOS, int x, int y, int w, int h) {
       rect = {x, y, w, h};
       _rect = {(double)x, (double)y, (double)w, (double)h};
-
       _ptr = cairo_region_create_rectangle(&rect);
+      bOSsurface = bOS;
     }
     CairoRegion(std::size_t _obj, int x, int y, int w, int h) : obj(_obj) {
       rect = {x, y, w, h};
       _rect = {(double)x, (double)y, (double)w, (double)h};
-
       _ptr = cairo_region_create_rectangle(&rect);
+      bOSsurface = false;
     }
 
     CairoRegion(const CairoRegion &other) { *this = other; }
@@ -88,6 +92,7 @@ public:
       rect = other.rect;
       _rect = other._rect;
       obj = other.obj;
+      bOSsurface = other.bOSsurface;
       return *this;
     }
     ~CairoRegion() {
@@ -96,10 +101,9 @@ public:
     }
     cairo_rectangle_int_t rect = cairo_rectangle_int_t();
     cairo_rectangle_t _rect = cairo_rectangle_t();
-
     cairo_region_t *_ptr = nullptr;
-    bool eval = false;
     std::size_t obj = 0;
+    bool bOSsurface = false;
   };
 
 public:
@@ -165,11 +169,14 @@ public:
 
   void render(void);
   void addDrawable(std::shared_ptr<DrawingOutput> _obj);
-
+  void partitionVisibility(void);
   void state(std::shared_ptr<DrawingOutput> obj);
-  void state(bool on, int x = 0, int y = 0, int w = 0, int h = 0);
+  void state(int x, int y, int w, int h);
   bool state(void);
+  void stateSurface(int x, int y, int w, int h);
 
+  DRAWBUFFER allocateBuffer(int width, int height);
+  static void destroyBuffer(DRAWBUFFER &_buffer);
   void clear(void);
 
   CurrentUnits currentUnits = CurrentUnits();
@@ -202,6 +209,10 @@ public:
   unsigned short windowWidth = 0;
   unsigned short windowHeight = 0;
   bool windowOpen = false;
+
+  std::atomic_flag lockBrush = ATOMIC_FLAG_INIT;
+#define BRUSH_SPIN while (lockBrush.test_and_set(std::memory_order_acquire))
+#define BRUSH_CLEAR lockBrush.clear(std::memory_order_release)
   Paint brush = Paint("white");
 
 #pragma pack(push, 1)
@@ -229,17 +240,14 @@ private:
   lockSurfaceRequests.clear(std::memory_order_release)
 
   int offsetx = 0, offsety = 0;
+  void applySurfaceRequests(void);
 
 public:
 #if defined(__linux__)
-  void lock(bool b) {
-    if(b) {
-      SURFACE_REQUESTS_SPIN;
-    } else {
-      SURFACE_REQUESTS_CLEAR;
-    }
-  }
+  // if render request time for objects are less than x ms
+  int cacheThreshold = 200;
 
+  std::atomic<bool> bClearFrame = false;
   Display *xdisplay = nullptr;
   xcb_connection_t *connection = nullptr;
   xcb_screen_t *screen = nullptr;
@@ -252,6 +260,16 @@ public:
   xcb_key_symbols_t *syms = nullptr;
 
   cairo_surface_t *xcbSurface = nullptr;
+  std::atomic_flag lockXCBSurface = ATOMIC_FLAG_INIT;
+#define XCB_SPIN while (lockXCBSurface.test_and_set(std::memory_order_acquire))
+#define XCB_CLEAR lockXCBSurface.clear(std::memory_order_release)
+  void lock(bool b) {
+    if (b) {
+      XCB_SPIN;
+    } else {
+      XCB_CLEAR;
+    }
+  }
   bool preclear = false;
 
 #elif defined(_WIN64)

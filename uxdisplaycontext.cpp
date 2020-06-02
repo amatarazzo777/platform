@@ -6,7 +6,11 @@ bool uxdevice::DisplayContext::surfacePrime() {
   bool bRet = false;
 
   // no surface allocated yet
-  if (!xcbSurface) {
+  XCB_SPIN;
+  bool bExists = xcbSurface != nullptr;
+  XCB_CLEAR;
+
+  if (!bExists) {
     return bRet;
   }
 
@@ -48,10 +52,12 @@ bool uxdevice::DisplayContext::surfacePrime() {
 }
 
 void uxdevice::DisplayContext::flush() {
-  state(false);
 
+  XCB_SPIN;
   if (xcbSurface)
     cairo_surface_flush(xcbSurface);
+  XCB_CLEAR;
+
   if (connection)
     xcb_flush(connection);
 }
@@ -62,22 +68,11 @@ void uxdevice::DisplayContext::resizeSurface(const int w, const int h) {
     _surfaceRequests.push_back(std::make_tuple(w, h));
   SURFACE_REQUESTS_CLEAR;
 }
+void uxdevice::DisplayContext::applySurfaceRequests(void) {}
 
 void uxdevice::DisplayContext::render(void) {
-  SURFACE_REQUESTS_SPIN;
-
-  // processing surface requests
-  if (!_surfaceRequests.empty()) {
-    auto flat = _surfaceRequests.back();
-    _surfaceRequests.clear();
-
-    cairo_surface_flush(xcbSurface);
-    cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat),
-                               std::get<1>(flat));
-    windowWidth = std::get<0>(flat);
-    windowHeight = std::get<1>(flat);
-  }
-  SURFACE_REQUESTS_CLEAR;
+  bClearFrame = false;
+  partitionVisibility();
 
   // rectangle of area needs painting background first.
   // these are subareas perhaps multiples exist because of resize
@@ -85,46 +80,107 @@ void uxdevice::DisplayContext::render(void) {
   // paint dispatch event. When the window is opened
   // render work will contain entire window
 
-  REGIONS_SPIN;
-  std::size_t cnt = _regions.size();
-  auto it = _regions.begin();
-
-
-  DRAWABLES_ON_SPIN;
-
   // AFM NOTE it appears the the push and pop
   // cause a memory error, over writing a malloc block
-  // header -- os reports a size difernt that prev
-    // hides all drawing operations until pop to source.
-  //cairo_push_group(cr);
+  // header -- os reports a size different that prev
+  // hides all drawing operations until pop to source.
+  // processing surface requests
+  if (!_surfaceRequests.empty()) {
+    auto flat = _surfaceRequests.back();
+    _surfaceRequests.clear();
 
-  while (cnt) {
+    XCB_SPIN;
+    cairo_surface_flush(xcbSurface);
+    cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat),
+                               std::get<1>(flat));
+    XCB_CLEAR;
 
-    CairoRegion &r = *it;
+    windowWidth = std::get<0>(flat);
+    windowHeight = std::get<1>(flat);
+  }
+  SURFACE_REQUESTS_CLEAR;
 
+  REGIONS_SPIN;
+  cairo_region_t *current = nullptr;
+  while (!_regions.empty()) {
+    CairoRegion r = _regions.front();
+    _regions.pop_front();
+
+    if (current) {
+      cairo_region_overlap_t ovrlp =
+          cairo_region_contains_rectangle(current, &r.rect);
+      if (ovrlp == CAIRO_REGION_OVERLAP_IN)
+        continue;
+    } else {
+      current = cairo_region_reference(r._ptr);
+    }
+
+    XCB_SPIN;
+    cairo_push_group(cr);
+
+    BRUSH_SPIN;
     brush.emit(cr);
+    BRUSH_CLEAR;
+
+    XCB_CLEAR;
+
+    XCB_SPIN;
     cairo_rectangle(cr, r.rect.x, r.rect.y, r.rect.width, r.rect.height);
     cairo_fill(cr);
+    XCB_CLEAR;
 
+    XCB_SPIN;
     plot(r);
+    XCB_CLEAR;
 
-    it++;
-    cnt--;
+    XCB_SPIN;
+    cairo_pop_group_to_source(cr);
+    cairo_paint(cr);
+    XCB_CLEAR;
+
+    // processing surface requests
+    SURFACE_REQUESTS_SPIN;
+    if (!_surfaceRequests.empty()) {
+      auto flat = _surfaceRequests.back();
+      _surfaceRequests.clear();
+
+      XCB_SPIN;
+      cairo_surface_flush(xcbSurface);
+      cairo_xcb_surface_set_size(xcbSurface, std::get<0>(flat),
+                                 std::get<1>(flat));
+      XCB_CLEAR;
+
+      windowWidth = std::get<0>(flat);
+      windowHeight = std::get<1>(flat);
+    }
+    SURFACE_REQUESTS_CLEAR;
+
+    if (bClearFrame) {
+      bClearFrame = false;
+      break;
+    }
   }
-
-  // pop the draw group to the surface.
- // cairo_pop_group_to_source(cr);
-  //cairo_paint(cr);
-  DRAWABLES_ON_CLEAR;
   REGIONS_CLEAR;
+  cairo_region_destroy(current);
+}
+
+uxdevice::DRAWBUFFER uxdevice::DisplayContext::allocateBuffer(int width,
+                                                              int height) {
+  cairo_surface_t *rendered =
+      cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+  cairo_t *cr = cairo_create(rendered);
+  return DRAWBUFFER{cr, rendered};
+}
+void uxdevice::DisplayContext::destroyBuffer(DRAWBUFFER &_buffer) {
+  if (_buffer.cr)
+    cairo_destroy(_buffer.cr);
+  if (_buffer.rendered)
+    cairo_surface_destroy(_buffer.rendered);
+  _buffer = {};
 }
 
 void uxdevice::DisplayContext::addDrawable(
     std::shared_ptr<DrawingOutput> _obj) {
-  viewportRectangle = {(double)offsetx, (double)offsety,
-                       (double)offsetx + (double)windowWidth,
-                       (double)offsety + (double)windowHeight};
-
   _obj->intersect(viewportRectangle);
   if (_obj->overlap == CAIRO_REGION_OVERLAP_OUT) {
     DRAWABLES_OFF_SPIN;
@@ -139,77 +195,104 @@ void uxdevice::DisplayContext::addDrawable(
   _obj->viewportInked = true;
 }
 
-void uxdevice::DisplayContext::clear(void) {
-  REGIONS_SPIN;
-  _regions.clear();
-  offsetx = 0;
-  offsety = 0;
+void uxdevice::DisplayContext::partitionVisibility(void) {
+  // determine if any off screen elements are visible
+  DRAWABLES_OFF_SPIN;
+  DRAWABLES_ON_SPIN;
   viewportRectangle = {(double)offsetx, (double)offsety,
                        (double)offsetx + (double)windowWidth,
                        (double)offsety + (double)windowHeight};
 
-  currentUnits = CurrentUnits();
+  DrawingOutputCollection::iterator obj = viewportOff.begin();
+  while (obj != viewportOff.end()) {
+    std::shared_ptr<DrawingOutput> n = *obj;
+
+    n->intersect(viewportRectangle);
+    if (n->overlap != CAIRO_REGION_OVERLAP_OUT) {
+      DrawingOutputCollection::iterator next = obj;
+      next++;
+
+      viewportOn.push_back(n);
+
+      viewportOff.erase(obj);
+
+      obj = next;
+    } else {
+      obj++;
+    }
+  }
+  DRAWABLES_OFF_CLEAR;
+  DRAWABLES_ON_CLEAR;
+}
+
+void uxdevice::DisplayContext::clear(void) {
+  bClearFrame = true;
+
+  REGIONS_SPIN;
+  _regions.remove_if([](auto &n) {
+                   return !n.bOSsurface; });
+
+  offsetx = 0;
+  offsety = 0;
+
+  currentUnits.area.reset();
+  currentUnits.text.reset();
+  currentUnits.image.reset();
+  currentUnits.font.reset();
+  currentUnits.antialias.reset();
+  currentUnits.textshadow.reset();
+  currentUnits.textfill.reset();
+  currentUnits.textoutline.reset();
+  currentUnits.pen.reset();
+  currentUnits.background.reset();
+  currentUnits.align.reset();
+  currentUnits.event.reset();
+  currentUnits.options = {};
+
+  REGIONS_CLEAR;
+
   DRAWABLES_ON_SPIN;
   viewportOn.clear();
   DRAWABLES_ON_CLEAR;
-  REGIONS_CLEAR;
 
   DRAWABLES_OFF_SPIN;
   viewportOff.clear();
   DRAWABLES_OFF_CLEAR;
 
-  state(true, 0, 0, windowWidth, windowHeight);
+  stateSurface(0, 0, windowWidth, windowHeight);
 }
 
 void uxdevice::DisplayContext::surfaceBrush(Paint &b) {
+  BRUSH_SPIN;
   brush = b;
-  viewportRectangle = {(double)offsetx, (double)offsety,
-                       (double)offsetx + (double)windowWidth,
-                       (double)offsety + (double)windowHeight};
-  state(true, 0, 0, windowWidth, windowHeight);
+  BRUSH_CLEAR;
+  stateSurface(0, 0, windowWidth, windowHeight);
 }
 
 void uxdevice::DisplayContext::state(std::shared_ptr<DrawingOutput> obj) {
   REGIONS_SPIN;
   std::size_t onum = reinterpret_cast<std::size_t>(obj.get());
-#if defined(CONSOLE)
-  std::cout << "**--- " << onum << ", " << obj->inkRectangle.x << ", "
-            << obj->inkRectangle.y << ", " << obj->inkRectangle.width << ", "
-            << obj->inkRectangle.height << std::endl
-            << std::flush;
-#endif // defined
 
   _regions.push_back(CairoRegion(onum, obj->inkRectangle.x, obj->inkRectangle.y,
                                  obj->inkRectangle.width,
                                  obj->inkRectangle.height));
-
   REGIONS_CLEAR;
 }
 
-void uxdevice::DisplayContext::state(bool on, int x, int y, int w, int h) {
+void uxdevice::DisplayContext::state(int x, int y, int w, int h) {
   REGIONS_SPIN;
+  _regions.push_back(CairoRegion{false, x, y, w, h});
+  REGIONS_CLEAR;
+}
 
-  if (on) {
-    auto it = std::find_if(_regions.begin(), _regions.end(), [=](auto &n) {
-        return n.rect.x == x && n.rect.y == y && n.rect.width == w &&
-               n.rect.height == h;
-      });
+void uxdevice::DisplayContext::stateSurface(int x, int y, int w, int h) {
+  REGIONS_SPIN;
+  auto it= std::find_if(_regions.begin(), _regions.end(), [](auto &n) { return !n.bOSsurface;});
+  if(it!=_regions.end())
+    _regions.insert(it, CairoRegion{true, x, y, w, h});
+  else
+    _regions.push_back(CairoRegion{true, x, y, w, h});
 
-    if(it==_regions.end())
-      _regions.push_back(CairoRegion{x, y, w, h});
-#if defined(CONSOLE)
-    std::cout << "****--- " << x << ", " << y << ", " << w << ", " << h
-              << std::endl
-              << std::flush;
-#endif // defined
-  } else {
-    while (!_regions.empty()) {
-      if (!_regions.front().eval) {
-        break;
-      }
-      _regions.pop_front();
-    }
-  }
   REGIONS_CLEAR;
 }
 
@@ -219,35 +302,11 @@ bool uxdevice::DisplayContext::state(void) {
 
   bool ret = false;
 
-  if (!_regions.empty())
-    for (auto &it : _regions)
-      if (!it.eval) {
-        // determine if any offscreen elements are visible
-        DRAWABLES_OFF_SPIN;
-        DrawingOutputCollection::iterator obj = viewportOff.begin();
-        while (obj != viewportOff.end()) {
-          std::shared_ptr<DrawingOutput> n = *obj;
-          n->intersect(it._rect);
-          if (n->overlap != CAIRO_REGION_OVERLAP_OUT) {
-            DrawingOutputCollection::iterator next = obj;
-            next++;
-            DRAWABLES_ON_SPIN;
-            viewportOn.push_back(n);
-            DRAWABLES_ON_CLEAR;
+  if (!_regions.empty()) {
 
-            viewportOff.erase(obj);
-
-            obj = next;
-          } else {
-            obj++;
-          }
-        }
-        DRAWABLES_OFF_CLEAR;
-        // inform the caller that there is work to be done.
-        ret = true;
-
-        break;
-      }
+    // inform the caller that there is work to be done.
+    ret = true;
+  }
 
   REGIONS_CLEAR;
 
@@ -263,26 +322,43 @@ void uxdevice::DisplayContext::plot(CairoRegion &plotArea) {
   // if an object is named as what should be updated.
   // setting the flag informs that the contents
   // has been evaluated and ma be removed
+  DRAWABLES_ON_SPIN;
+  if (viewportOn.empty()) {
+    DRAWABLES_ON_CLEAR;
+    return;
+  }
 
-  for (auto &unit : viewportOn) {
+  auto itUnit = viewportOn.begin();
+  bool bDone = false;
+  while (!bDone) {
     std::shared_ptr<DrawingOutput> n =
-        std::dynamic_pointer_cast<DrawingOutput>(unit);
+        std::dynamic_pointer_cast<DrawingOutput>(*itUnit);
+    DRAWABLES_ON_CLEAR;
     n->intersect(plotArea._rect);
 
     switch (n->overlap) {
     case CAIRO_REGION_OVERLAP_OUT:
-      plotArea.eval = true;
       break;
     case CAIRO_REGION_OVERLAP_IN: {
-      n->fnBaseSurface(*this);
+      n->functorsLock(true);
       n->fnDraw(*this);
-      plotArea.eval = true;
+      n->functorsLock(false);
     } break;
     case CAIRO_REGION_OVERLAP_PART: {
-      n->fnCacheSurface(*this);
+      n->functorsLock(true);
       n->fnDrawClipped(*this);
-      plotArea.eval = true;
+      n->functorsLock(false);
+
     } break;
     }
+    if (bClearFrame)
+      bDone = true;
+
+    DRAWABLES_ON_SPIN;
+    if (!bDone) {
+      itUnit++;
+      bDone = itUnit == viewportOn.end();
+    }
   }
+  DRAWABLES_ON_CLEAR;
 }

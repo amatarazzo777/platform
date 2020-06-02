@@ -4,7 +4,7 @@
 using namespace std;
 using namespace uxdevice;
 
-void drawText(platform &vis, double dStep);
+void drawText(platform &vis, double dStep, bool bfast);
 void drawshapes(platform &vis, double dStep);
 void drawimages(platform &vis, double dStep);
 void testStart(string_view sFunc) {
@@ -212,9 +212,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
 
-  drawshapes(vis, 1);
-
-   drawText(vis, 1);
+   drawshapes(vis, 1);
+   //drawimages(vis, 1);
+   drawText(vis, 1, false);
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
@@ -225,30 +225,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
       std::chrono::high_resolution_clock::now();
 
   while (vis.processing()) {
-  for(int i=0;i<10;i++) {
     drawshapes(vis, 1);
-    drawimages(vis,1);
-    drawText(vis, 1);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    //drawimages(vis, 1);
+    drawText(vis, 1, true);
 
-  }
-
-
-    // sleep for some time to not take over cpu,
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> diff = end - start;
-
-    if(diff.count()>10000) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
     Paint p =
-       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
-             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
     vis.surfaceBrush(p);
-      vis.clear();
-      start=end;
-    }
+    vis.clear();
   }
 
   return 0;
@@ -259,7 +245,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 // focus input.
 void eventDispatch(const event &evt) {}
 
-void drawText(platform &vis, double dStep) {
+void drawText(platform &vis, double dStep, bool bfast) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> scrn(0, 400.0);
@@ -285,7 +271,7 @@ void drawText(platform &vis, double dStep) {
   // area is a rounded box 120,120 are the corner pixel sizes.
   // rectangle is x-0,y=0 width=800, height = 600
   // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
-  //vis.drawArea();
+  // vis.drawArea();
   std::uniform_int_distribution<> info(1, 5);
   switch (info(gen)) {
   case 1:
@@ -320,20 +306,26 @@ void drawText(platform &vis, double dStep) {
   }
 
   // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans Bold 14");
+  vis.font("DejaVu Sans Bold 34");
   std::uniform_int_distribution<> fill(1, 2);
 
-  vis.textShadow("black");
-  vis.textAlignment(alignment::left);
+  if (bfast) {
+    vis.pen(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
 
-  vis.textFill(
-      coord(gen), coord(gen), coord(gen), coord(gen),
-      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
-  vis.textFill(stripes);
+  } else {
+    vis.textShadow("black");
+    vis.textAlignment(alignment::left);
 
-  vis.textOutline(
-      coord(gen), coord(gen), coord(gen), coord(gen),
-      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+    vis.textFill(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+    // vis.textFill(stripes);
+
+    vis.textOutline(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  }
 
   vis.drawText();
 }
@@ -345,25 +337,26 @@ void drawshapes(platform &vis, double dStep) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> scrn(0, 600);
-    std::uniform_real_distribution<> dcir(25.0, 100.0);
+    std::uniform_real_distribution<> dcir(5.0, 20.0);
+    std::uniform_real_distribution<> dimen(25.0, 300.0);
     std::uniform_real_distribution<> color(0, 1.0);
-    std::uniform_real_distribution<> opac(.3, .6);
-    std::uniform_real_distribution<> lw(2, 10.0);
+    std::uniform_real_distribution<> opac(.5, 1);
+    std::uniform_real_distribution<> lw(7, 30.0);
     std::uniform_real_distribution<> coord(55.0, 100.0);
     std::uniform_int_distribution<> shape(1, 4);
     switch (shape(gen)) {
     case 1:
-      vis.areaCircle(scrn(gen), scrn(gen), dcir(gen));
+      vis.areaCircle(scrn(gen), scrn(gen), dimen(gen));
       break;
     case 2:
-      vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
+      vis.areaEllipse(scrn(gen), scrn(gen), dimen(gen), dimen(gen));
       break;
     case 3:
-      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen),
+      vis.area(scrn(gen), scrn(gen), dimen(gen), dimen(gen), dcir(gen),
                dcir(gen));
       break;
     case 4:
-      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen));
+      vis.area(scrn(gen), scrn(gen), dimen(gen), dimen(gen));
       break;
     }
 #define _C color(gen)
@@ -381,7 +374,7 @@ void drawshapes(platform &vis, double dStep) {
 }
 
 void drawimages(platform &vis, double dStep) {
-  for(int i=0;i<10;i++) {
+  for (int i = 0; i < 10; i++) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> scrn(0, 600);

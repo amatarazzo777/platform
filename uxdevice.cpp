@@ -66,7 +66,7 @@ void uxdevice::platform::dispatchEvent(const event &evt) {
   case eventType::none:
     break;
   case eventType::paint: {
-    context.state(true, evt.x, evt.y, evt.w, evt.h);
+    context.stateSurface(evt.x, evt.y, evt.w, evt.h);
   } break;
   case eventType::resize:
     context.resizeSurface(evt.w, evt.h);
@@ -122,7 +122,7 @@ void uxdevice::platform::startProcessing(int _fps) {
   eventHandler ev = std::bind(&uxdevice::platform::dispatchEvent, this,
                               std::placeholders::_1);
   framesPerSecond = _fps;
-
+  context.cacheThreshold = 1000 / framesPerSecond * 2;
   std::thread thrRenderer([=]() {
     bProcessing = true;
     renderLoop();
@@ -355,6 +355,7 @@ void uxdevice::platform::openWindow(const std::string &sWindowTitle,
   }
 
   // create xcb surface
+
   context.xcbSurface = cairo_xcb_surface_create(
       context.connection, context.window, context.visualType,
       context.windowWidth, context.windowHeight);
@@ -1042,8 +1043,8 @@ void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textOutlineNone(void) {
   DL_SPIN;
-  DL.push_back(
-      make_shared<CLEARUNIT>((void **)&context.currentUnits.textoutline));
+  DL.push_back(make_shared<CLEARUNIT>(
+      [=]() { context.currentUnits.textoutline.reset(); }));
   DL.back()->invoke(context);
   DL_CLEAR;
 }
@@ -1113,7 +1114,8 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textFillNone(void) {
   DL_SPIN;
-  DL.push_back(make_shared<CLEARUNIT>((void **)&context.currentUnits.textfill));
+  DL.push_back(
+      make_shared<CLEARUNIT>([=]() { context.currentUnits.textfill.reset(); }));
   DL.back()->invoke(context);
   DL_CLEAR;
 }
@@ -1207,8 +1209,8 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textShadowNone(void) {
   DL_SPIN;
-  DL.push_back(
-      make_shared<CLEARUNIT>((void **)&context.currentUnits.textshadow));
+  DL.push_back(make_shared<CLEARUNIT>(
+      [=]() { context.currentUnits.textshadow.reset(); }));
   DL.back()->invoke(context);
   DL_CLEAR;
 }
@@ -1268,8 +1270,8 @@ void uxdevice::platform::drawText(void) {
   DL_SPIN;
   DL.push_back(make_shared<DRAWTEXT>());
   DL.back()->invoke(context);
-  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
   DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
 }
 
 /**
@@ -1280,8 +1282,8 @@ void uxdevice::platform::drawImage(void) {
 
   DL.push_back(make_shared<DRAWIMAGE>());
   DL.back()->invoke(context);
-  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
   DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
 }
 /**
 \brief
@@ -1291,8 +1293,8 @@ void uxdevice::platform::drawArea(void) {
 
   DL.push_back(std::make_shared<DRAWAREA>());
   DL.back()->invoke(context);
-  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
   DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(DL.back()));
 }
 
 /**

@@ -45,7 +45,7 @@ public:
 
 /**
 \brief base class for objects that produce image drawing commands
-The isOutput is overriden to return true. As well the object uses
+The isOutput is overridden to return true. As well the object uses
 the render work list to determine if a particular image is on screen.
 
 */
@@ -55,19 +55,23 @@ public:
   typedef DisplayContext::CairoRegion CairoRegion;
   DrawingOutput(){};
   ~DrawingOutput() {
-    if (cr)
-      cairo_destroy(cr);
+    if (oncethread)
+      oncethread.reset();
 
-    if (rendered)
-      cairo_surface_destroy(rendered);
+    DisplayContext::destroyBuffer(_buf);
   }
   DrawingOutput &operator=(const DrawingOutput &other) {
-    bCompleted = other.bCompleted;
-    viewportInked = other.viewportInked;
-    rendered = cairo_surface_reference(other.rendered);
+    if (other._buf.rendered)
+      _buf.rendered = cairo_surface_reference(other._buf.rendered);
+
+    if (other._buf.cr)
+      _buf.cr = cairo_reference(other._buf.cr);
+
     fnDraw = other.fnDraw;
     fnDrawClipped = other.fnDrawClipped;
-    cr = cairo_reference(cr);
+    fnCacheSurface = other.fnCacheSurface;
+    fnBaseSurface = other.fnBaseSurface;
+
     std::copy(other.options.begin(), other.options.end(),
               std::back_inserter(options));
     _inkRectangle = other._inkRectangle;
@@ -90,40 +94,57 @@ public:
   void invoke(DisplayContext &context) {}
   bool isOutput(void) { return true; }
   std::atomic<bool> bRenderBufferCached = false;
-  cairo_surface_t *rendered = nullptr;
-  cairo_t *cr = nullptr;
-  bool bCompleted = false;
-  bool viewportInked = false;
+  DRAWBUFFER _buf = {};
 
   // These functions switch the rendering apparatus from off
   // screen threaded to on screen. all rendering is serialize to the main
   // surface
   //
+  std::atomic_flag lockFunctors = ATOMIC_FLAG_INIT;
+#define LOCK_FUNCTORS_SPIN                                                     \
+  while (lockFunctors.test_and_set(std::memory_order_acquire))
+
+#define LOCK_FUNCTORS_CLEAR lockFunctors.clear(std::memory_order_release)
+
+  void functorsLock(bool b) {
+    if (b)
+      LOCK_FUNCTORS_SPIN;
+    else
+      LOCK_FUNCTORS_CLEAR;
+  }
+
   DrawLogic fnCacheSurface = DrawLogic();
   DrawLogic fnBaseSurface = DrawLogic();
   DrawLogic fnDraw = DrawLogic();
   DrawLogic fnDrawClipped = DrawLogic();
 
+  // measure processing time
+  std::chrono::system_clock::time_point lastRenderTime = {};
+  void evaluateCache(DisplayContext &context);
+  bool bFirstTimeRendered = true;
+  std::unique_ptr<std::thread> oncethread = nullptr;
   CairoOptionFn options = {};
   cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
   cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
   cairo_rectangle_t _intersection = cairo_rectangle_t();
 };
 
+typedef std::function<void(void)> CLEAR_FUNCTION;
+
 class CLEARUNIT : public DisplayUnit {
 public:
-  CLEARUNIT(void **_ptr) : p(_ptr) {}
+  CLEARUNIT(CLEAR_FUNCTION _fn) : fn(_fn) {}
 
   CLEARUNIT &operator=(const CLEARUNIT &other) {
-    p = other.p;
+    fn = other.fn;
     return *this;
   }
   CLEARUNIT(const CLEARUNIT &other) { *this = other; }
   void invoke(DisplayContext &context) {
-    *p = nullptr;
+    fn();
     bprocessed = true;
   }
-  void **p = nullptr;
+  CLEAR_FUNCTION fn = {};
 };
 
 class ANTIALIAS : public DisplayUnit {

@@ -25,11 +25,12 @@ options when compiling the source.
 #define DEFAULT_TEXTSIZE 12
 #define DEFAULT_TEXTCOLOR 0
 
+//#define CLIP_OUTLINE
 /**
 \def USE_DEBUG_CONSOLE
 */
 #define USE_DEBUG_CONSOLE
-//#define CONSOLE
+#define CONSOLE
 /** @} */
 
 #include "uxbase.hpp"
