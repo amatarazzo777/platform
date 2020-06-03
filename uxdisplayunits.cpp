@@ -19,6 +19,25 @@ shading or texturing derive and publish the Paint class interface.
 */
 
 #include "uxdevice.hpp"
+
+// error check for this file
+#ifdef ERROR_CHECK
+#undef ERROR_CHECK
+#endif // ERROR_CHECK
+
+#define ERROR_CHECK(obj)                                                       \
+  {                                                                            \
+    cairo_status_t stat = context.errorCheck(obj);                             \
+    if (stat)                                                                  \
+      context.errorState(__func__, __LINE__, __FILE__, stat);                  \
+  }
+#define ERROR_DRAW_PARAM(s) \
+  context.errorState(__func__, __LINE__, __FILE__, std::string_view(s)); \
+  error(s);
+
+#define ERROR_DESC(s) \
+  context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));
+
 void uxdevice::DrawingOutput::invoke(cairo_t *cr) {
 
   // for (auto &fn : options)
@@ -94,7 +113,7 @@ void uxdevice::OPTION_FUNCTION::invoke(DisplayContext &context) {
     return n->fnOption.target_type().hash_code() == optType;
   });
 
-  context.currentUnits.options.push_back(this);
+  context.currentUnits.options.emplace_back(this);
 }
 
 void uxdevice::AREA::shrink(double a) {
@@ -235,11 +254,11 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
   options = context.currentUnits.options;
 
   // check the context parameters before operating
-  if (!(pen || textoutline || textfill) && (area && text && font)) {
+  if (!((pen || textoutline || textfill) && area && text && font)) {
     const char *s = "A draw text object must include the following "
                     "attributes. A pen or a textoutline or "
                     " textfill. As well, an area, text and font";
-    error(s);
+    ERROR_DRAW_PARAM(s);
     auto fn = [=](DisplayContext &context) {};
 
     fnBaseSurface = std::bind(fn, _1);
@@ -353,9 +372,13 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
     context.lock(true);
     setLayoutOptions(context.cr);
     context.lock(false);
+
+    ERROR_CHECK(context.cr);
+
     _buf = context.allocateBuffer(_inkRectangle.width, _inkRectangle.height);
 
     setLayoutOptions(_buf.cr);
+    ERROR_CHECK(_buf.cr);
 
     AREA a = *area;
 #if 0
@@ -368,11 +391,10 @@ void uxdevice::DRAWTEXT::invoke(DisplayContext &context) {
     a.y = 0;
 
     fn(_buf.cr, a);
-    cairo_status_t stat = cairo_status(_buf.cr);
+    ERROR_CHECK(_buf.cr);
 
     cairo_surface_flush(_buf.rendered);
-
-    stat = cairo_surface_status(_buf.rendered);
+    ERROR_CHECK(_buf.rendered);
 
     auto drawfn = [=](DisplayContext &context) {
       DrawingOutput::invoke(context.cr);
@@ -449,20 +471,24 @@ void uxdevice::IMAGE::invoke(DisplayContext &context) {
     return;
   area = context.currentUnits.area;
   if (!area) {
-    std::stringstream sError;
-    sError << "ERR IMAGE AREA not set. "
-           << "  " << __FILE__ << " " << __func__;
+    const char *s= "An image requires an area size to be defined. ";
+    ERROR_DRAW_PARAM(s);
     return;
   }
 
-  auto fnthread = [=]() {
+  auto fnthread = [=,&context]() {
     _image = readImage(_data, area->w, area->h);
 
     if (_image)
       bLoaded = true;
+    else {
+      const char *s="The image could not be processed or loaded. ";
+      ERROR_DRAW_PARAM(s);
+      ERROR_DESC(_data);
+    }
   };
-  loadthread = std::make_unique<std::thread>(fnthread);
 
+  fnthread();
   bprocessed = true;
 }
 
@@ -476,10 +502,16 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
   area = context.currentUnits.area;
   image = context.currentUnits.image;
   options = context.currentUnits.options;
-  if (!(area && image)) {
-    const char *err = "A draw image object must include the following "
+  if (!(area && image && image->valid())) {
+    const char *s = "A draw image object must include the following "
                       "attributes. A an area and an image.";
-    error(err);
+    ERROR_DRAW_PARAM(s);
+    auto fn = [=](DisplayContext &context) {};
+
+    fnBaseSurface = std::bind(fn, _1);
+    fnCacheSurface = std::bind(fn, _1);
+    fnDraw = std::bind(fn, _1);
+    fnDrawClipped = std::bind(fn, _1);
     return;
   }
   // set the ink area.
@@ -489,16 +521,19 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
                    (double)inkRectangle.width, (double)inkRectangle.height};
   hasInkExtents = true;
   auto fnCache = [=](DisplayContext &context) {
-    image->removethread();
 
     // set directly callable rendering function.
     auto fn = [=](DisplayContext &context) {
+      if(!image->valid())
+        return;
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, image->_image, a.x, a.y);
       cairo_rectangle(context.cr, a.x, a.y, a.w, a.h);
       cairo_fill(context.cr);
     };
     auto fnClipping = [=](DisplayContext &context) {
+      if(!image->valid())
+        return;
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, image->_image, a.x, a.y);
       cairo_rectangle(context.cr, _intersection.x, _intersection.y,
@@ -512,8 +547,8 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
     bRenderBufferCached = true;
   };
 
-  // two function provide mode swtiching for the rendering.
-  // a cache surface is a new xcb surface wthat can be threaded in creation
+  // two function provide mode switching for the rendering.
+  // a cache surface is a new xcb surface that can be threaded in creation
   // base surface issues the drawing commands to the base window drawing cairo
   // context
   fnCacheSurface = fnCache;
@@ -540,7 +575,13 @@ void uxdevice::DRAWAREA::invoke(DisplayContext &context) {
     const char *s =
         "The draw area command requires an area to be defined. As well"
         "a background, or a pen.";
-    error(s);
+    ERROR_DRAW_PARAM(s);
+    auto fn = [=](DisplayContext &context) {};
+
+    fnBaseSurface = std::bind(fn, _1);
+    fnCacheSurface = std::bind(fn, _1);
+    fnDraw = std::bind(fn, _1);
+    fnDrawClipped = std::bind(fn, _1);
     return;
   }
 

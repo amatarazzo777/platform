@@ -7,13 +7,6 @@ using namespace uxdevice;
 void drawText(platform &vis, double dStep, bool bfast);
 void drawshapes(platform &vis, double dStep);
 void drawimages(platform &vis, double dStep);
-void testStart(string_view sFunc) {
-#if defined(CONSOLE)
-  cout << sFunc << endl;
-#elif defined(_WIN64)
-
-#endif
-}
 
 void eventDispatch(const event &evt);
 void handleError(const std::string errText) {
@@ -194,16 +187,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 
   // starts rendering and message threads
   // parameter notes frame per second
-  vis.startProcessing(60);
+  vis.startProcessing();
 
   std::random_device rd;
   std::mt19937 gen(rd());
+
+ std::uniform_int_distribution<> motime(500, 5000);
 
   std::uniform_real_distribution<> color(0, 1.0);
   std::uniform_real_distribution<> opac(.9, 1.0);
 
   std::uniform_real_distribution<> coord(25.0, 100.0);
-
+  std::uniform_real_distribution<> ang(-10,10);
 #define _C color(gen)
 #define _A opac(gen)
 
@@ -212,9 +207,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
 
-   drawshapes(vis, 1);
-   //drawimages(vis, 1);
-   drawText(vis, 1, false);
+  //drawshapes(vis, 1);
+   drawimages(vis, 1);
+  //drawText(vis, 1, false);
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
@@ -223,18 +218,45 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // measure processing time
   std::chrono::system_clock::time_point start =
       std::chrono::high_resolution_clock::now();
+  std::chrono::system_clock::time_point start2 =
+      std::chrono::high_resolution_clock::now();
+  std::size_t mtime=motime(gen);
+  Paint p =
+      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+  double a=ang(gen);
 
   while (vis.processing()) {
-    drawshapes(vis, 1);
-    //drawimages(vis, 1);
-    drawText(vis, 1, true);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    Paint p =
-        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
-              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    p.rotate(PI / 180 * a);
+    a=a/1.07;
+    // p.scale(.21,.1);
     vis.surfaceBrush(p);
-    vis.clear();
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> diff = end - start;
+
+    if(diff.count()>10000) {
+      vis.clear();
+      drawshapes(vis, 1);
+      drawText(vis, 1, false);
+      drawimages(vis, 1);
+      start = std::chrono::high_resolution_clock::now();
+
+    }
+
+    diff = end - start2;
+    if(diff.count()>mtime) {
+      p =
+      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+      start2 = std::chrono::high_resolution_clock::now();
+      a=ang(gen);
+      mtime=motime(gen);
+    }
+    vis.notifyComplete();
   }
 
   return 0;
@@ -306,7 +328,7 @@ void drawText(platform &vis, double dStep, bool bfast) {
   }
 
   // set the font name according to pango spi. see pango font description.
-  vis.font("DejaVu Sans Bold 34");
+  vis.font("50px");
   std::uniform_int_distribution<> fill(1, 2);
 
   if (bfast) {
@@ -333,10 +355,10 @@ void drawText(platform &vis, double dStep, bool bfast) {
 void drawshapes(platform &vis, double dStep) {
   // circle
 
-  for (int c = 0; c < 10; c++) {
+  for (int c = 0; c < 50; c++) {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<> scrn(0, 600);
+    std::uniform_real_distribution<> scrn(0, 1000);
     std::uniform_real_distribution<> dcir(5.0, 20.0);
     std::uniform_real_distribution<> dimen(25.0, 300.0);
     std::uniform_real_distribution<> color(0, 1.0);
@@ -400,7 +422,7 @@ void drawimages(platform &vis, double dStep) {
       break;
     }
 
-    std::uniform_int_distribution<> imgname(1, 5);
+    std::uniform_int_distribution<> imgname(2, 4);
     switch (imgname(gen)) {
     case 1:
       vis.image("/home/anthony/development/platform/image/23.svg");
@@ -415,6 +437,12 @@ void drawimages(platform &vis, double dStep) {
       vis.image("/home/anthony/development/platform/image/bugu.png");
       break;
     case 5:
+      vis.image(stripes);
+      break;
+    case 6:
+      vis.image(sSVG);
+      break;
+    case 7:
       vis.image("/home/anthony/development/platform/image/starbubble.svg");
       break;
     }

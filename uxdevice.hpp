@@ -85,9 +85,10 @@ public:
   void backgroundBrush(Paint &p) { context.brush = p; }
   bool processing(void) { return bProcessing; }
 
-  void startProcessing(int _fps);
+  void startProcessing(void);
 
   void clear(void);
+  void notifyComplete(void);
 
   void text(const std::string &s);
   void text(const std::stringstream &s);
@@ -260,7 +261,7 @@ private:
 private:
   DisplayContext context = DisplayContext();
   std::atomic<bool> bProcessing = false;
-  int framesPerSecond = 30;
+  int framesPerSecond = 60;
   errorHandler fnError = nullptr;
   eventHandler fnEvents = nullptr;
 

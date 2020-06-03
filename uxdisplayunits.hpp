@@ -217,8 +217,15 @@ public:
   bool bProvidedDescription = false;
   PangoFontDescription *fontDescription = nullptr;
   void invoke(DisplayContext &context) {
-    if (!fontDescription)
+    if (!fontDescription) {
       fontDescription = pango_font_description_from_string(description.data());
+      if (!fontDescription) {
+        std::string s="Font could not be loaded from description. ( ";
+        s+=description + ")";
+        context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));
+      }
+
+    }
     bprocessed = true;
   }
 };
@@ -380,9 +387,9 @@ public:
 
   void removethread(void) {
     if (loadthread.get()) {
-      if (loadthread.get()->joinable())
+      if (loadthread.get()->joinable()) {
         loadthread.get()->join();
-
+      }
       loadthread.reset();
     }
   }

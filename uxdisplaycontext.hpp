@@ -174,10 +174,30 @@ public:
   void state(int x, int y, int w, int h);
   bool state(void);
   void stateSurface(int x, int y, int w, int h);
+  void stateNotifyComplete(void);
 
   DRAWBUFFER allocateBuffer(int width, int height);
   static void destroyBuffer(DRAWBUFFER &_buffer);
   void clear(void);
+
+  std::atomic_flag lockErrors = ATOMIC_FLAG_INIT;
+#define ERRORS_SPIN while (lockErrors.test_and_set(std::memory_order_acquire))
+#define ERRORS_CLEAR lockErrors.clear(std::memory_order_release)
+  std::list<std::string> _errors = {};
+
+  void errorState(const std::string_view &sfunc, const std::size_t linenum,
+                  const std::string_view &sfile, const cairo_status_t stat);
+  void errorState(const std::string_view &sfunc, const std::size_t linenum,
+                  const std::string_view &sfile, const std::string_view &desc);
+  void errorState(const std::string_view &sfunc, const std::size_t linenum,
+                  const std::string_view &sfile, const std::string &desc);
+  bool errorState(void);
+  std::string errorText(bool bclear = true);
+
+  cairo_status_t errorCheck(cairo_surface_t *sur) {
+    return cairo_surface_status(sur);
+  }
+  cairo_status_t errorCheck(cairo_t *cr) { return cairo_status(cr); }
 
   CurrentUnits currentUnits = CurrentUnits();
   void setUnit(std::shared_ptr<AREA> _area) { currentUnits.area = _area; };
@@ -229,7 +249,11 @@ private:
 #define REGIONS_SPIN while (lockRegions.test_and_set(std::memory_order_acquire))
 #define REGIONS_CLEAR lockRegions.clear(std::memory_order_release)
 
-  typedef std::tuple<int, int> _WH;
+  typedef struct _WH {
+    int w = 0;
+    int h = 0;
+    _WH(int _w, int _h) : w(_w), h(_h) {}
+  } WH;
   std::list<_WH> _surfaceRequests = {};
   typedef std::list<_WH>::iterator SurfaceRequestsIter;
   std::atomic_flag lockSurfaceRequests = ATOMIC_FLAG_INIT;
@@ -241,6 +265,8 @@ private:
 
   int offsetx = 0, offsety = 0;
   void applySurfaceRequests(void);
+  std::mutex mutexRenderWork={};
+  std::condition_variable cvRenderWork={};
 
 public:
 #if defined(__linux__)
