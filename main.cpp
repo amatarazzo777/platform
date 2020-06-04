@@ -222,20 +222,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 //==========================================
 // test apparatus
 #define ANIMATE_SLEEP 100
-#define DRAW_SLEEP 100
+#define DRAW_SLEEP 1000
 
 #define ANIMATE_BACKGROUND
 #define FRAME_CHANGE
 #define SHAPES
-#define IMAGES
+//#define IMAGES
 #define TEXT
-#define FAST_TEXT false
+#define FAST_TEXT true
 
 #define ANIMATE_EASE 1.007
 
 
-#define NUM_SHAPES 1000
-#define NUM_IMAGES 100
+#define NUM_SHAPES 100
+#define NUM_IMAGES 10
 
 //================================================
 
