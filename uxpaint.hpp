@@ -138,8 +138,8 @@ private:
   double _width = -1;
   double _height = -1;
 
-  cairo_pattern_t *_pattern = nullptr;
-  cairo_surface_t *_image = nullptr;
+  std::atomic<cairo_pattern_t *>_pattern = nullptr;
+  std::atomic<cairo_surface_t *>_image = nullptr;
   PangoColor _pangoColor = {0, 0, 0};
   bool _bLoaded = false;
 };

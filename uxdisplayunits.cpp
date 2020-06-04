@@ -31,11 +31,11 @@ shading or texturing derive and publish the Paint class interface.
     if (stat)                                                                  \
       context.errorState(__func__, __LINE__, __FILE__, stat);                  \
   }
-#define ERROR_DRAW_PARAM(s) \
-  context.errorState(__func__, __LINE__, __FILE__, std::string_view(s)); \
+#define ERROR_DRAW_PARAM(s)                                                    \
+  context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));       \
   error(s);
 
-#define ERROR_DESC(s) \
+#define ERROR_DESC(s)                                                          \
   context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));
 
 void uxdevice::DrawingOutput::invoke(cairo_t *cr) {
@@ -79,7 +79,7 @@ void uxdevice::DrawingOutput::intersect(CairoRegion &rectregion) {
 }
 
 void uxdevice::DrawingOutput::evaluateCache(DisplayContext &context) {
-return;
+  return;
   if (bRenderBufferCached) {
     lastRenderTime = std::chrono::high_resolution_clock::now();
     if (oncethread)
@@ -471,18 +471,18 @@ void uxdevice::IMAGE::invoke(DisplayContext &context) {
     return;
   area = context.currentUnits.area;
   if (!area) {
-    const char *s= "An image requires an area size to be defined. ";
+    const char *s = "An image requires an area size to be defined. ";
     ERROR_DRAW_PARAM(s);
     return;
   }
 
-  auto fnthread = [=,&context]() {
+  auto fnthread = [=, &context]() {
     _image = readImage(_data, area->w, area->h);
 
     if (_image)
       bLoaded = true;
     else {
-      const char *s="The image could not be processed or loaded. ";
+      const char *s = "The image could not be processed or loaded. ";
       ERROR_DRAW_PARAM(s);
       ERROR_DESC(_data);
     }
@@ -504,7 +504,7 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
   options = context.currentUnits.options;
   if (!(area && image && image->valid())) {
     const char *s = "A draw image object must include the following "
-                      "attributes. A an area and an image.";
+                    "attributes. A an area and an image.";
     ERROR_DRAW_PARAM(s);
     auto fn = [=](DisplayContext &context) {};
 
@@ -521,10 +521,9 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
                    (double)inkRectangle.width, (double)inkRectangle.height};
   hasInkExtents = true;
   auto fnCache = [=](DisplayContext &context) {
-
     // set directly callable rendering function.
     auto fn = [=](DisplayContext &context) {
-      if(!image->valid())
+      if (!image->valid())
         return;
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, image->_image, a.x, a.y);
@@ -532,7 +531,7 @@ void uxdevice::DRAWIMAGE::invoke(DisplayContext &context) {
       cairo_fill(context.cr);
     };
     auto fnClipping = [=](DisplayContext &context) {
-      if(!image->valid())
+      if (!image->valid())
         return;
       DrawingOutput::invoke(context.cr);
       cairo_set_source_surface(context.cr, image->_image, a.x, a.y);

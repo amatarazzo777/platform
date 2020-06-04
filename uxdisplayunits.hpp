@@ -215,16 +215,15 @@ public:
   bool bProvidedName = false;
   bool bProvidedSize = false;
   bool bProvidedDescription = false;
-  PangoFontDescription *fontDescription = nullptr;
+  std::atomic<PangoFontDescription *>fontDescription = nullptr;
   void invoke(DisplayContext &context) {
     if (!fontDescription) {
       fontDescription = pango_font_description_from_string(description.data());
       if (!fontDescription) {
-        std::string s="Font could not be loaded from description. ( ";
-        s+=description + ")";
+        std::string s = "Font could not be loaded from description. ( ";
+        s += description + ")";
         context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));
       }
-
     }
     bprocessed = true;
   }
@@ -394,7 +393,7 @@ public:
     }
   }
   void invoke(DisplayContext &context);
-  cairo_surface_t *_image = nullptr;
+  std::atomic<cairo_surface_t *>_image = nullptr;
   std::unique_ptr<std::thread> loadthread = nullptr;
   std::shared_ptr<AREA> area = nullptr;
   std::string _data = "";
@@ -426,9 +425,9 @@ public:
   std::size_t beginIndex = 0;
   std::size_t endIndex = 0;
   bool bEntire = true;
-  cairo_surface_t *shadowImage = nullptr;
-  cairo_t *shadowCr = nullptr;
-  PangoLayout *layout = nullptr;
+  std::atomic<cairo_surface_t *>shadowImage = nullptr;
+  std::atomic<cairo_t *>shadowCr = nullptr;
+  std::atomic<PangoLayout *>layout = nullptr;
   PangoRectangle ink_rect = PangoRectangle();
   PangoRectangle logical_rect = PangoRectangle();
 
@@ -449,7 +448,7 @@ class DRAWIMAGE : public DrawingOutput {
 public:
   DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
   DRAWIMAGE(void) {}
-  ~DRAWIMAGE() { image->removethread(); }
+  ~DRAWIMAGE() {  }
   DRAWIMAGE(const DRAWIMAGE &other) { *this = other; }
   DRAWIMAGE &operator=(const DRAWIMAGE &other) {
     area = other.area;

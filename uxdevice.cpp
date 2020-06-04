@@ -36,14 +36,10 @@ void uxdevice::platform::renderLoop(void) {
     // if no work exists  it waits on the cvRenderWork condition variable.
     if (context.surfacePrime()) {
       context.render();
-
-      // blits the surface and xcb connection.
-      context.flush();
     }
 
     if (context.errorState())
       fnError(context.errorText());
-
   }
 }
 
@@ -217,6 +213,7 @@ uxdevice::platform::platform(const eventHandler &evtDispatcher,
   and frees resources.
 */
 uxdevice::platform::~platform() {
+  context.clear();
   closeWindow();
 
 #if defined(__linux__)
@@ -485,14 +482,12 @@ void uxdevice::platform::closeWindow(void) {
     xcb_destroy_window(context.connection, context.window);
     context.window = 0;
   }
-  if (context.connection) {
-    xcb_disconnect(context.connection);
-    context.connection = 0;
-  }
   if (context.xdisplay) {
     XCloseDisplay(context.xdisplay);
     context.xdisplay = nullptr;
   }
+
+
   context.windowOpen = false;
 
 #elif defined(_WIN64)
@@ -775,13 +770,11 @@ void uxdevice::platform::clear(void) {
   DL.clear();
   DL_CLEAR;
 }
-void uxdevice::platform::notifyComplete(void) {
-  context.stateNotifyComplete();
-}
+void uxdevice::platform::notifyComplete(void) { context.stateNotifyComplete(); }
 
 void uxdevice::platform::antiAlias(antialias antialias) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<ANTIALIAS>(antialias));
+  auto item = DL.emplace_back(make_shared<ANTIALIAS>(antialias));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<ANTIALIAS>(item));
   DL_CLEAR;
@@ -792,7 +785,7 @@ void uxdevice::platform::antiAlias(antialias antialias) {
 */
 void uxdevice::platform::text(const std::string &s) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<STRING>(s));
+  auto item = DL.emplace_back(make_shared<STRING>(s));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<STRING>(item));
   DL_CLEAR;
@@ -802,7 +795,7 @@ void uxdevice::platform::text(const std::string &s) {
 */
 void uxdevice::platform::text(const std::stringstream &s) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<STRING>(s.str()));
+  auto item = DL.emplace_back(make_shared<STRING>(s.str()));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<STRING>(item));
   DL_CLEAR;
@@ -812,7 +805,7 @@ void uxdevice::platform::text(const std::stringstream &s) {
 */
 void uxdevice::platform::image(const std::string &s) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<IMAGE>(s));
+  auto item = DL.emplace_back(make_shared<IMAGE>(s));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<IMAGE>(item));
   DL_CLEAR;
@@ -822,7 +815,7 @@ void uxdevice::platform::image(const std::string &s) {
 */
 void uxdevice::platform::pen(const Paint &p) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(p));
+  auto item = DL.emplace_back(make_shared<PEN>(p));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -830,7 +823,7 @@ void uxdevice::platform::pen(const Paint &p) {
 
 void uxdevice::platform::pen(u_int32_t c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(c));
+  auto item = DL.emplace_back(make_shared<PEN>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -838,14 +831,14 @@ void uxdevice::platform::pen(u_int32_t c) {
 
 void uxdevice::platform::pen(const string &c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(c));
+  auto item = DL.emplace_back(make_shared<PEN>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::pen(const std::string &c, double w, double h) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(c, w, h));
+  auto item = DL.emplace_back(make_shared<PEN>(c, w, h));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -853,14 +846,14 @@ void uxdevice::platform::pen(const std::string &c, double w, double h) {
 
 void uxdevice::platform::pen(double _r, double _g, double _b) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(_r, _g, _b));
+  auto item = DL.emplace_back(make_shared<PEN>(_r, _g, _b));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(_r, _g, _b, _a));
+  auto item = DL.emplace_back(make_shared<PEN>(_r, _g, _b, _a));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -868,7 +861,7 @@ void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
 void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
                              const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(x0, y0, x1, y1, cs));
+  auto item = DL.emplace_back(make_shared<PEN>(x0, y0, x1, y1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -876,7 +869,8 @@ void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
 void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
                              double cy1, double radius1, const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  auto item = DL.emplace_back(
+      make_shared<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<PEN>(item));
   DL_CLEAR;
@@ -887,28 +881,28 @@ void uxdevice::platform::surfaceBrush(Paint &b) { context.surfaceBrush(b); }
 */
 void uxdevice::platform::background(const Paint &p) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(p));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(p));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::background(u_int32_t c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(c));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::background(const string &c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(c));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::background(const std::string &c, double w, double h) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(c, w, h));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c, w, h));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
@@ -916,7 +910,7 @@ void uxdevice::platform::background(const std::string &c, double w, double h) {
 
 void uxdevice::platform::background(double _r, double _g, double _b) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
@@ -924,7 +918,7 @@ void uxdevice::platform::background(double _r, double _g, double _b) {
 void uxdevice::platform::background(double _r, double _g, double _b,
                                     double _a) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b, _a));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b, _a));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
@@ -932,7 +926,7 @@ void uxdevice::platform::background(double _r, double _g, double _b,
 void uxdevice::platform::background(double x0, double y0, double x1, double y1,
                                     const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<BACKGROUND>(x0, y0, x1, y1, cs));
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(x0, y0, x1, y1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
   DL_CLEAR;
@@ -941,7 +935,7 @@ void uxdevice::platform::background(double cx0, double cy0, double radius0,
                                     double cx1, double cy1, double radius1,
                                     const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(
+  auto item = DL.emplace_back(
       make_shared<BACKGROUND>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
@@ -952,7 +946,7 @@ void uxdevice::platform::background(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textAlignment(alignment aln) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<ALIGN>(aln));
+  auto item = DL.emplace_back(make_shared<ALIGN>(aln));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<ALIGN>(item));
   DL_CLEAR;
@@ -963,14 +957,14 @@ void uxdevice::platform::textAlignment(alignment aln) {
 */
 void uxdevice::platform::textOutline(const Paint &p, double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(p, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(p, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -980,7 +974,7 @@ void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
 */
 void uxdevice::platform::textOutline(const string &c, double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -988,7 +982,7 @@ void uxdevice::platform::textOutline(const string &c, double dWidth) {
 void uxdevice::platform::textOutline(const std::string &c, double w, double h,
                                      double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(c, w, h, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, w, h, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -999,7 +993,7 @@ void uxdevice::platform::textOutline(const std::string &c, double w, double h,
 void uxdevice::platform::textOutline(double _r, double _g, double _b,
                                      double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -1010,7 +1004,7 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b,
 void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
                                      double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -1018,7 +1012,8 @@ void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
 void uxdevice::platform::textOutline(double x0, double y0, double x1, double y1,
                                      const ColorStops &cs, double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
+  auto item =
+      DL.emplace_back(make_shared<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -1028,8 +1023,8 @@ void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
                                      double cx1, double cy1, double radius1,
                                      const ColorStops &cs, double dWidth) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTOUTLINE>(cx0, cy0, radius0, cx1, cy1, radius1,
-                                        cs, dWidth));
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(
+      cx0, cy0, radius0, cx1, cy1, radius1, cs, dWidth));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
   DL_CLEAR;
@@ -1040,7 +1035,7 @@ void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textOutlineNone(void) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<CLEARUNIT>(
+  auto item = DL.emplace_back(make_shared<CLEARUNIT>(
       [=]() { context.currentUnits.textoutline.reset(); }));
   item->invoke(context);
   DL_CLEAR;
@@ -1048,42 +1043,42 @@ void uxdevice::platform::textOutlineNone(void) {
 
 void uxdevice::platform::textFill(const Paint &p) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(p));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(p));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(u_int32_t c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(c));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(const string &c) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(c));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(const string &c, double w, double h) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(c, w, h));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c, w, h));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
 }
 void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b, _a));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b, _a));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
@@ -1091,7 +1086,7 @@ void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
 void uxdevice::platform::textFill(double x0, double y0, double x1, double y1,
                                   const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(x0, y0, x1, y1, cs));
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(x0, y0, x1, y1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
@@ -1100,7 +1095,8 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
                                   double cx1, double cy1, double radius1,
                                   const ColorStops &cs) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  auto item = DL.emplace_back(
+      make_shared<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
   DL_CLEAR;
@@ -1111,7 +1107,7 @@ void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textFillNone(void) {
   DL_SPIN;
-  auto item=DL.emplace_back(
+  auto item = DL.emplace_back(
       make_shared<CLEARUNIT>([=]() { context.currentUnits.textfill.reset(); }));
   item->invoke(context);
   DL_CLEAR;
@@ -1122,7 +1118,7 @@ void uxdevice::platform::textFillNone(void) {
 void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(p, r, xOffset, yOffset));
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(p, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1130,7 +1126,7 @@ void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
 void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1141,7 +1137,7 @@ void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
 void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1149,7 +1145,8 @@ void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
 void uxdevice::platform::textShadow(const std::string &c, double w, double h,
                                     int r, double xOffset, double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
+  auto item =
+      DL.emplace_back(make_shared<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1161,7 +1158,8 @@ void uxdevice::platform::textShadow(const std::string &c, double w, double h,
 void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
                                     double xOffset, double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
+  auto item =
+      DL.emplace_back(make_shared<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1172,7 +1170,8 @@ void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
 void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
                                     int r, double xOffset, double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
+  auto item = DL.emplace_back(
+      make_shared<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1182,7 +1181,7 @@ void uxdevice::platform::textShadow(double x0, double y0, double x1, double y1,
                                     const ColorStops &cs, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(
+  auto item = DL.emplace_back(
       make_shared<TEXTSHADOW>(x0, y0, x1, y1, cs, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
@@ -1194,8 +1193,8 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
                                     const ColorStops &cs, int r, double xOffset,
                                     double yOffset) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<TEXTSHADOW>(cx0, cy0, radius0, cx1, cy1, radius1, cs,
-                                       r, xOffset, yOffset));
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(
+      cx0, cy0, radius0, cx1, cy1, radius1, cs, r, xOffset, yOffset));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
   DL_CLEAR;
@@ -1206,7 +1205,7 @@ void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
 */
 void uxdevice::platform::textShadowNone(void) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<CLEARUNIT>(
+  auto item = DL.emplace_back(make_shared<CLEARUNIT>(
       [=]() { context.currentUnits.textshadow.reset(); }));
   item->invoke(context);
   DL_CLEAR;
@@ -1217,7 +1216,7 @@ void uxdevice::platform::textShadowNone(void) {
 */
 void uxdevice::platform::font(const std::string &s) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<FONT>(s));
+  auto item = DL.emplace_back(make_shared<FONT>(s));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<FONT>(item));
   DL_CLEAR;
@@ -1227,7 +1226,8 @@ void uxdevice::platform::font(const std::string &s) {
 */
 void uxdevice::platform::area(double x, double y, double w, double h) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<AREA>(areaType::rectangle, x, y, w, h));
+  auto item =
+      DL.emplace_back(make_shared<AREA>(areaType::rectangle, x, y, w, h));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<AREA>(item));
   DL_CLEAR;
@@ -1236,7 +1236,7 @@ void uxdevice::platform::area(double x, double y, double w, double h) {
 void uxdevice::platform::area(double x, double y, double w, double h, double rx,
                               double ry) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<AREA>(x, y, w, h, rx, ry));
+  auto item = DL.emplace_back(make_shared<AREA>(x, y, w, h, rx, ry));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<AREA>(item));
   DL_CLEAR;
@@ -1244,7 +1244,7 @@ void uxdevice::platform::area(double x, double y, double w, double h, double rx,
 
 void uxdevice::platform::areaCircle(double x, double y, double d) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<AREA>(x, y, d / 2));
+  auto item = DL.emplace_back(make_shared<AREA>(x, y, d / 2));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<AREA>(item));
   DL_CLEAR;
@@ -1253,7 +1253,8 @@ void uxdevice::platform::areaCircle(double x, double y, double d) {
 void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
                                      double ry) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<AREA>(areaType::ellipse, cx, cy, rx, ry));
+  auto item =
+      DL.emplace_back(make_shared<AREA>(areaType::ellipse, cx, cy, rx, ry));
   item->invoke(context);
   context.setUnit(std::dynamic_pointer_cast<AREA>(item));
 
@@ -1265,7 +1266,7 @@ void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
 */
 void uxdevice::platform::drawText(void) {
   DL_SPIN;
-  auto item=DL.emplace_back(make_shared<DRAWTEXT>());
+  auto item = DL.emplace_back(make_shared<DRAWTEXT>());
   item->invoke(context);
   DL_CLEAR;
   context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
@@ -1277,7 +1278,7 @@ void uxdevice::platform::drawText(void) {
 void uxdevice::platform::drawImage(void) {
   DL_SPIN;
 
-  auto item=DL.emplace_back(make_shared<DRAWIMAGE>());
+  auto item = DL.emplace_back(make_shared<DRAWIMAGE>());
   item->invoke(context);
   DL_CLEAR;
   context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
@@ -1288,7 +1289,7 @@ void uxdevice::platform::drawImage(void) {
 void uxdevice::platform::drawArea(void) {
   DL_SPIN;
 
-  auto item=DL.emplace_back(std::make_shared<DRAWAREA>());
+  auto item = DL.emplace_back(std::make_shared<DRAWAREA>());
   item->invoke(context);
   DL_CLEAR;
   context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
@@ -1301,7 +1302,7 @@ void uxdevice::platform::save(void) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_save, _1);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1312,7 +1313,7 @@ void uxdevice::platform::restore(void) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_restore, _1);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1327,7 +1328,7 @@ void uxdevice::platform::push(content c) {
     func = std::bind(cairo_push_group_with_content, _1,
                      static_cast<cairo_content_t>(c));
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1341,7 +1342,7 @@ void uxdevice::platform::pop(bool bToSource) {
   } else {
     func = std::bind(cairo_pop_group, _1);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1353,7 +1354,7 @@ void uxdevice::platform::translate(double x, double y) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_translate, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1364,7 +1365,7 @@ void uxdevice::platform::rotate(double angle) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_rotate, _1, angle);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1375,7 +1376,7 @@ void uxdevice::platform::scale(double x, double y) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_scale, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1386,7 +1387,7 @@ void uxdevice::platform::transform(const Matrix &m) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m._matrix);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1397,7 +1398,7 @@ void uxdevice::platform::matrix(const Matrix &m) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m._matrix);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1408,7 +1409,7 @@ void uxdevice::platform::identity(void) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_identity_matrix, _1);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1428,7 +1429,7 @@ void uxdevice::platform::device(double &x, double &y) {
   };
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1447,7 +1448,7 @@ void uxdevice::platform::deviceDistance(double &x, double &y) {
   };
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1465,7 +1466,7 @@ void uxdevice::platform::user(double &x, double &y) {
   };
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1484,7 +1485,7 @@ void uxdevice::platform::userDistance(double &x, double &y) {
   };
 
   CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1497,7 +1498,7 @@ void uxdevice::platform::cap(lineCap c) {
   DL_SPIN;
   CAIRO_OPTION func =
       std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1510,7 +1511,7 @@ void uxdevice::platform::join(lineJoin j) {
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1522,7 +1523,7 @@ void uxdevice::platform::lineWidth(double dWidth) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1534,7 +1535,7 @@ void uxdevice::platform::miterLimit(double dLimit) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1548,7 +1549,7 @@ void uxdevice::platform::dashes(const std::vector<double> &dashes,
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1560,7 +1561,7 @@ void uxdevice::platform::tollerance(double _t) {
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1573,7 +1574,7 @@ void uxdevice::platform::op(op_t _op) {
   DL_SPIN;
   CAIRO_FUNCTION func =
       std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1586,7 +1587,7 @@ void uxdevice::platform::source(Paint &p) {
   DL_SPIN;
   auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
   CAIRO_FUNCTION func = std::bind(fn, _1, p);
-  auto item=DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1604,7 +1605,7 @@ void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
   } else {
     func = std::bind(cairo_arc, _1, xc, yc, radius, angle1, angle2);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1622,7 +1623,7 @@ void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
   } else {
     func = std::bind(cairo_curve_to, _1, x1, y1, x2, y2, x3, y3);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1639,7 +1640,7 @@ void uxdevice::platform::line(double x, double y, bool bRelative) {
   } else {
     func = std::bind(cairo_line_to, _1, x, y);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1656,7 +1657,7 @@ void uxdevice::platform::stroke(bool bPreserve) {
   } else {
     func = std::bind(cairo_stroke, _1);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1673,7 +1674,7 @@ void uxdevice::platform::move(double x, double y, bool bRelative) {
   } else {
     func = std::bind(cairo_move_to, _1, x, y);
   }
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }
@@ -1686,7 +1687,7 @@ void uxdevice::platform::rectangle(double x, double y, double width,
   using namespace std::placeholders;
   DL_SPIN;
   CAIRO_FUNCTION func = std::bind(cairo_rectangle, _1, x, y, width, height);
-  auto item=DL.emplace_back(make_shared<FUNCTION>(func));
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
   item->invoke(context);
   DL_CLEAR;
 }

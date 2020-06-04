@@ -235,9 +235,7 @@ public:
 #define BRUSH_CLEAR lockBrush.clear(std::memory_order_release)
   Paint brush = Paint("white");
 
-#pragma pack(push, 1)
   cairo_t *cr = nullptr;
-#pragma pack(pop)
 
   cairo_rectangle_t viewportRectangle = cairo_rectangle_t();
 
@@ -265,8 +263,8 @@ private:
 
   int offsetx = 0, offsety = 0;
   void applySurfaceRequests(void);
-  std::mutex mutexRenderWork={};
-  std::condition_variable cvRenderWork={};
+  std::mutex mutexRenderWork = {};
+  std::condition_variable cvRenderWork = {};
 
 public:
 #if defined(__linux__)

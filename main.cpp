@@ -188,17 +188,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
   // starts rendering and message threads
   // parameter notes frame per second
   vis.startProcessing();
-
   std::random_device rd;
   std::mt19937 gen(rd());
 
- std::uniform_int_distribution<> motime(500, 5000);
+  std::uniform_int_distribution<> motime(500, 5000);
 
   std::uniform_real_distribution<> color(0, 1.0);
   std::uniform_real_distribution<> opac(.9, 1.0);
 
   std::uniform_real_distribution<> coord(25.0, 100.0);
-  std::uniform_real_distribution<> ang(-10,10);
+  std::uniform_real_distribution<> ang(-10, 10);
 #define _C color(gen)
 #define _A opac(gen)
 
@@ -207,56 +206,109 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
       Paint(coord(gen), coord(gen), coord(gen), coord(gen),
             {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
 
-  //drawshapes(vis, 1);
-   drawimages(vis, 1);
-  //drawText(vis, 1, false);
+  // drawshapes(vis, 1);
+  drawimages(vis, 1);
+  // drawText(vis, 1, false);
 
   // clients are free to continue processing
   // the vis.processing() is used to catch the program from exiting
   // when the user closes the window, the switch will be false
   double dStep = 1;
   // measure processing time
-  std::chrono::system_clock::time_point start =
+  thread_local std::chrono::system_clock::time_point start =
       std::chrono::high_resolution_clock::now();
-  std::chrono::system_clock::time_point start2 =
-      std::chrono::high_resolution_clock::now();
-  std::size_t mtime=motime(gen);
-  Paint p =
-      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
-            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
-  double a=ang(gen);
 
+
+//==========================================
+// test apparatus
+#define ANIMATE_SLEEP 100
+#define DRAW_SLEEP 100
+
+#define ANIMATE_BACKGROUND
+#define FRAME_CHANGE
+#define SHAPES
+#define IMAGES
+#define TEXT
+#define FAST_TEXT false
+
+#define ANIMATE_EASE 1.007
+
+
+#define NUM_SHAPES 1000
+#define NUM_IMAGES 100
+
+//================================================
+
+#ifdef ANIMATE_BACKGROUND
+  std::thread thr([&vis, &motime, &coord, &ang, &color, &gen]() {
+    std::size_t mtime = motime(gen);
+    Paint p =
+        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+    double a = ang(gen);
+    while (vis.processing()) {
+
+      std::chrono::system_clock::time_point end =
+          std::chrono::high_resolution_clock::now();
+
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+              .count() > mtime) {
+        p = Paint(
+            coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+        start = std::chrono::high_resolution_clock::now();
+        a = ang(gen);
+        mtime = motime(gen);
+      }
+
+      p.rotate(PI / 180 * a);
+      a = a / ANIMATE_EASE;
+      vis.surfaceBrush(p);
+      vis.notifyComplete();
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(ANIMATE_SLEEP));
+
+    }
+  });
+
+  thr.detach();
+#endif
+
+#ifdef SHAPES
+    drawshapes(vis, 1);
+#endif
+
+#ifdef TEXT
+    drawText(vis, 1, false);
+#endif
+
+#ifdef IMAGES
+    drawimages(vis, 1);
+#endif
+vis.notifyComplete();
   while (vis.processing()) {
+#if defined(FRAME_CHANGE)
+#if defined(SHAPES) || defined(TEXT) || defined(IMAGES)
+    vis.clear();
+#endif
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#ifdef SHAPES
+    drawshapes(vis, 1);
+#endif
 
-    p.rotate(PI / 180 * a);
-    a=a/1.07;
-    // p.scale(.21,.1);
-    vis.surfaceBrush(p);
+#ifdef TEXT
+    drawText(vis, 1, FAST_TEXT);
+#endif
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> diff = end - start;
+#ifdef IMAGES
+    drawimages(vis, 1);
+#endif
 
-    if(diff.count()>10000) {
-      vis.clear();
-      drawshapes(vis, 1);
-      drawText(vis, 1, false);
-      drawimages(vis, 1);
-      start = std::chrono::high_resolution_clock::now();
-
-    }
-
-    diff = end - start2;
-    if(diff.count()>mtime) {
-      p =
-      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
-            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
-      start2 = std::chrono::high_resolution_clock::now();
-      a=ang(gen);
-      mtime=motime(gen);
-    }
+#if defined(SHAPES) || defined(TEXT) || defined(IMAGES)
     vis.notifyComplete();
+#endif
+#endif
+    std::this_thread::sleep_for(std::chrono::milliseconds(DRAW_SLEEP));
   }
 
   return 0;
@@ -353,9 +405,7 @@ void drawText(platform &vis, double dStep, bool bfast) {
 }
 
 void drawshapes(platform &vis, double dStep) {
-  // circle
-
-  for (int c = 0; c < 50; c++) {
+  for (int c = 0; c < NUM_SHAPES; c++) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> scrn(0, 1000);
@@ -396,7 +446,7 @@ void drawshapes(platform &vis, double dStep) {
 }
 
 void drawimages(platform &vis, double dStep) {
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < NUM_IMAGES; i++) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> scrn(0, 600);
@@ -404,7 +454,7 @@ void drawimages(platform &vis, double dStep) {
     std::uniform_real_distribution<> color(0, 1.0);
     std::uniform_real_distribution<> opac(.3, .6);
     std::uniform_real_distribution<> lw(2, 10.0);
-    std::uniform_real_distribution<> coord(55.0, 100.0);
+    std::uniform_real_distribution<> coord(255.0, 1000.0);
     std::uniform_int_distribution<> shape(1, 4);
     switch (shape(gen)) {
     case 1:
@@ -422,7 +472,7 @@ void drawimages(platform &vis, double dStep) {
       break;
     }
 
-    std::uniform_int_distribution<> imgname(2, 4);
+    std::uniform_int_distribution<> imgname(1, 7);
     switch (imgname(gen)) {
     case 1:
       vis.image("/home/anthony/development/platform/image/23.svg");
