@@ -1,52 +1,22 @@
-/*
- * This file is part of the PLATFORM_OBJ distribution
- * {https://github.com/amatarazzo777/platform_obj). Copyright (c) 2020 Anthony
- * Matarazzo.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
-/**
-\author Anthony Matarazzo
-\file main.cpp
-\date 9/7/20
-\version 1.0
-\brief
-*/
 
 #include "uxdevice.hpp"
 
 using namespace std;
 using namespace uxdevice;
 
-void show_time(surface_area_t &vis, double x, double y);
-std::shared_ptr<std::string> insert_text(surface_area_t &vis, bool bfast,
-                                         string &stxt);
-void draw_shapes(surface_area_t &vis);
-void draw_images(surface_area_t &vis);
-void draw_text(surface_area_t &vis, bool bfast);
-void draw_lines(surface_area_t &vis);
-std::string generate_text(void);
+void drawText(platform &vis, double dStep, bool bfast);
+void drawshapes(platform &vis, double dStep);
+void drawimages(platform &vis, double dStep);
 
-void event_dispatch(const event &evt);
-void handle_error(const std::string errText) {
+void eventDispatch(const event &evt);
+void handleError(const std::string errText) {
   fprintf(stderr, "%s", errText.data());
 }
 
 // inline PNG data using the RFC2397 base 64 encoding scheme.
 // This may be useful in some cases, yet raw byte data will be smaller in memory
-// description but larger in the text_color_t description perhaps unless the c++
-// RAW literanl input format is used for literal string data.
+// description but larger in the source description perhaps unless the c++ RAW
+// literanl input format is used for literal string data.
 const char *stripes =
     "data:image/"
     "png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAARCAYAAABEvFULAAAABmJLR0QA/wD/"
@@ -88,13 +58,13 @@ const char *stripes =
     "jDuf4YrMMm0cOGnAAAAAElFTkSuQmCC";
 
 // inline SVG, you may build this at run time or parameterize certain aspects
-// of the style. Not all of the blocks below are required,
+// of the style or and of its data. Not all of the blocks below are required,
 // such as meta data. The parsing is fast, however the information is still
 // transposed from text. The biggest slowdowns are the effects that use the
 // Gaussian blur functions. This uses the RSVG api for its rendering and
 // parsing. Files may be drawn in the inkscape application and transposed at
 // this layer.
-std::string sSVG_BUTTON =
+std::string sSVG =
     R"data(<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xmlns:dc="http://purl.org/dc/elements/1.1/"
@@ -103,190 +73,54 @@ std::string sSVG_BUTTON =
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns:sodipodi="http://sodipodi.text_color_tforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   enable-background="new"
    id="svg8"
    version="1.1"
    viewBox="0 0 210 297"
    height="297mm"
-   width="210mm"
-   sodipodi:docname="button.svg"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)">
-  <sodipodi:namedview
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1"
-     objecttolerance="10"
-     gridtolerance="10"
-     guidetolerance="10"
-     inkscape:pageopacity="0"
-     inkscape:pageshadow="2"
-     inkscape:window-width="1366"
-     inkscape:window-height="743"
-     id="namedview834"
-     showgrid="false"
-     inkscape:zoom="0.4944234"
-     inkscape:cx="193.34797"
-     inkscape:cy="741.58772"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="g1004" />
+   width="210mm">
   <defs
      id="defs2">
     <linearGradient
-       id="linearGradient1023">
+       id="linearGradient8910">
       <stop
-         id="stop1019"
+         id="stop8906"
          offset="0"
-         style="stop-color:#333333;stop-opacity:1;" />
+         style="stop-color:#00ff00;stop-opacity:1;" />
       <stop
-         id="stop1021"
+         id="stop8908"
          offset="1"
-         style="stop-color:#333333;stop-opacity:0;" />
+         style="stop-color:#00ff00;stop-opacity:0;" />
     </linearGradient>
     <linearGradient
-       id="linearGradient995">
+       id="linearGradient825">
       <stop
-         id="stop991"
+         id="stop821"
          offset="0"
-         style="stop-color:#ececec;stop-opacity:1;" />
+         style="stop-color:#00ffff;stop-opacity:1;" />
       <stop
-         id="stop993"
+         id="stop823"
          offset="1"
-         style="stop-color:#ececec;stop-opacity:0;" />
+         style="stop-color:#00ffff;stop-opacity:0;" />
     </linearGradient>
+    <linearGradient
+       gradientTransform="translate(-12.095238,-27.214286)"
+       gradientUnits="userSpaceOnUse"
+       y2="73.316124"
+       x2="64.48204"
+       y1="172.34589"
+       x1="63.112759"
+       id="linearGradient827"
+       xlink:href="#linearGradient825" />
     <radialGradient
        gradientUnits="userSpaceOnUse"
-       gradientTransform="matrix(1,0,0,0.27292226,0,343.86233)"
-       r="319.82966"
-       fy="294.56268"
-       fx="331.81046"
-       cy="294.56268"
-       cx="331.81046"
-       id="radialGradient997"
-       xlink:href="#linearGradient995" />
-    <linearGradient
-       gradientUnits="userSpaceOnUse"
-       y2="146.22223"
-       x2="108.20866"
-       y1="172.41464"
-       x1="107.85616"
-       id="linearGradient1025"
-       xlink:href="#linearGradient1023" />
-    <filter
-       height="1.708382"
-       y="-0.35419101"
-       width="1.1541983"
-       x="-0.077099127"
-       id="filter1027"
-       style="color-interpolation-filters:sRGB">
-      <feGaussianBlur
-         id="feGaussianBlur1029"
-         stdDeviation="19.09772" />
-    </filter>
-    <filter
-       height="1.0443415"
-       y="-0.022170732"
-       width="1.0164525"
-       x="-0.0082262443"
-       id="filter1031"
-       style="color-interpolation-filters:sRGB">
-      <feGaussianBlur
-         id="feGaussianBlur1033"
-         stdDeviation="0.57263392" />
-    </filter>
-    <filter
-       inkscape:label="Combined Lighting"
-       inkscape:menu="Bevels"
-       inkscape:menu-tooltip="Basic specular bevel to use for building textures"
-       style="color-interpolation-filters:sRGB;"
-       id="filter891">
-      <feColorMatrix
-         type="luminanceToAlpha"
-         result="result2"
-         id="feColorMatrix883" />
-      <feComposite
-         in2="SourceGraphic"
-         operator="arithmetic"
-         in="result2"
-         k3="2"
-         result="result4"
-         id="feComposite885" />
-      <feBlend
-         in="result4"
-         mode="multiply"
-         result="result3"
-         in2="result2"
-         id="feBlend887" />
-      <feComposite
-         in2="SourceGraphic"
-         operator="in"
-         in="result3"
-         id="feComposite889"
-         result="fbSourceGraphic" />
-      <feColorMatrix
-         result="fbSourceGraphicAlpha"
-         in="fbSourceGraphic"
-         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
-         id="feColorMatrix1250" />
-      <feGaussianBlur
-         id="feGaussianBlur1252"
-         stdDeviation="6"
-         in="fbSourceGraphic"
-         result="result0" />
-      <feDiffuseLighting
-         id="feDiffuseLighting1254"
-         lighting-color="rgb(255,255,255)"
-         diffuseConstant="1"
-         surfaceScale="4"
-         result="result5">
-        <feDistantLight
-           id="feDistantLight1256"
-           elevation="45"
-           azimuth="235" />
-      </feDiffuseLighting>
-      <feComposite
-         in2="fbSourceGraphic"
-         id="feComposite1258"
-         k1="1.4"
-         in="result5"
-         result="fbSourceGraphic"
-         operator="arithmetic" />
-      <feGaussianBlur
-         id="feGaussianBlur1260"
-         result="result0"
-         in="fbSourceGraphic"
-         stdDeviation="6" />
-      <feSpecularLighting
-         id="feSpecularLighting1262"
-         specularExponent="25"
-         specularConstant="1"
-         surfaceScale="4"
-         lighting-color="rgb(255,255,255)"
-         result="result1"
-         in="result0">
-        <feDistantLight
-           id="feDistantLight1264"
-           azimuth="235"
-           elevation="45" />
-      </feSpecularLighting>
-      <feComposite
-         in2="result1"
-         id="feComposite1266"
-         k3="1"
-         k2="1"
-         operator="arithmetic"
-         in="fbSourceGraphic"
-         result="result4" />
-      <feComposite
-         in2="fbSourceGraphic"
-         id="feComposite1268"
-         operator="in"
-         result="result2"
-         in="result4" />
-    </filter>
+       gradientTransform="matrix(1,0,0,1.1016153,0,-15.042195)"
+       r="19.052965"
+       fy="148.03078"
+       fx="25.656507"
+       cy="148.03078"
+       cx="25.656507"
+       id="radialGradient8914"
+       xlink:href="#linearGradient8910" />
   </defs>
   <metadata
      id="metadata5">
@@ -295,65 +129,49 @@ std::string sSVG_BUTTON =
          rdf:about="">
         <dc:format>image/svg+xml</dc:format>
         <dc:type
-           rdf:retext_color_t="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
   <g
      id="layer1">
-    <g
-       id="g1004"
-       transform="translate(-23.545946,-107.02703)"
-       style="stroke:#0085ec;stroke-opacity:1">
-      <rect
-         style="opacity:1;fill:#000080;stroke:#0085ec;stroke-width:0.86500001;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter891)"
-         id="rect10"
-         width="167.06548"
-         height="61.988094"
-         x="25.702381"
-         y="108.0119"
-         rx="17.41297"
-         ry="14.174099"
-         transform="rotate(1.2541334,109.23514,139.00585)"
-         inkscape:label="TEXT" />
-      <rect
-         ry="14.174099"
-         rx="17.41297"
-         y="108.0119"
-         x="25.702381"
-         height="61.988094"
-         width="167.06548"
-         id="rect22"
-         style="opacity:1;fill:url(#linearGradient1025);fill-opacity:1;stroke:#0085ec;stroke-width:0.86500001;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter1031)" />
-      <path
-         inkscape:connector-curvature="0"
-         style="opacity:0.88235294;fill:url(#radialGradient997);fill-opacity:1;stroke:#0085ec;stroke-width:2.90628815;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter1027)"
-         d="m 162.95508,408.23438 c -14.27697,0 -27.45121,3.67612 -38.21289,9.91601 -0.21918,1.2749 0.11022,-1.27702 0,0 5.3e-4,63.87864 132.92381,119.49047 297.50195,119.49023 153.02058,-9.7e-4 281.16876,-44.98588 296.49219,-104.08007 -11.58278,-15.22205 -32.27443,-25.32617 -55.97852,-25.32617 z"
-         transform="matrix(0.26326767,-0.0263528,0.033347,0.33314049,-26.454344,-14.63163)"
-         id="rect862" />
-    </g>
+    <path
+       d="M 99.785711,89.869046 65.017486,84.07598 40.534658,109.43303 35.300219,74.576329 3.6186199,59.127536 35.151783,43.377975 40.054307,8.473044 64.777312,33.595983 99.488837,27.472343 83.235332,58.748733 Z"
+       id="path815"
+       style="opacity:1;fill:url(#linearGradient827);fill-opacity:1;stroke:#0085ec;stroke-width:0.86500001;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;" />
+    <path
+       transform="matrix(3.4653861,0,0,2.8495594,-16.384137,-312.53425)"
+       d="m 27.59226,149.96727 c 0.397975,-1.09917 1.677999,-0.006 1.826885,0.66146 0.40347,1.80831 -1.571248,3.05425 -3.149804,2.99231 -2.823666,-0.1108 -4.519539,-3.03841 -4.157734,-5.63815 0.530964,-3.81521 4.520678,-6.01497 8.126491,-5.32316 4.805983,0.92207 7.522436,6.00767 6.488584,10.61484 -1.300996,5.79764 -7.496768,9.03597 -13.103179,7.65401 -6.790114,-1.67375 -10.55299,-8.98702 -8.819433,-15.59153 2.042936,-7.78318 10.477978,-12.07219 18.079866,-9.98486 8.776682,2.40991 13.59285,11.96942 11.150284,20.56822 -2.775398,9.77049 -13.461191,15.11452 -23.056555,12.3157 C 10.213117,165.09626 4.3407206,153.2829 7.496532,142.69122 11.000081,130.93244 23.941951,124.5313 35.529775,128.04466"
+       id="path8711"
+       style="fill:url(#radialGradient8914);fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.08419723;" />
+    <path
+       id="path8713"
+       d="m 106.74025,52.336607 c 51.2538,42.068154 52.00975,1.624703 52.7657,50.761603 0.75595,49.13691 13.22917,27.21429 1.51191,48.38095 -11.71727,21.16667 -28.34822,41.57738 -20.03274,6.4256 8.31547,-35.15178 -6.04762,-27.97024 7.9375,-40.44345 13.98512,-12.47322 26.83631,8.69345 26.83631,8.69345"
+       style="fill:#ff0000;fill-opacity:0;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;" />
+    <path
+       id="path8821"
+       d="m 138.64911,112.25335 c -2.54068,0.10491 -3.03691,-4.34524 -1.8739,-5.25183 -2.63067,-2.99434 3.7364,-4.48073 4.99197,-6.28774 1.39769,-1.608881 -6.31105,1.58184 -4.55268,-1.882209 1.11045,-1.442297 -0.38956,-4.324543 0.83936,-6.16917 1.00714,-1.649731 2.81516,-3.346919 3.36901,-4.621129 2.20741,-2.415567 -3.22176,-3.97794 -0.25915,-6.398655 1.19745,-1.184747 1.82828,-4.859365 3.5587,-3.505948 1.78639,-1.776738 2.836,1.134619 4.61727,0.70695 2.29649,1.14531 3.40698,3.853626 4.79277,6.027843 1.61057,1.8066 3.95398,2.083252 6.00743,2.846152 0.84936,-1.06443 3.42631,-0.214252 1.92488,0.77227 -1.68048,-0.552873 -3.5271,2.141067 -1.04187,2.649209 2.38537,1.946136 5.08802,2.611278 7.89105,2.585799 2.72759,0.514352 5.46843,-0.217895 8.09459,-0.991072 1.1792,-0.993413 2.31298,-1.433339 3.72499,-0.909305 1.52384,-1.092216 4.12865,-0.873475 6.14013,-1.031972 1.23129,-1.789946 3.44005,0.330912 2.09625,2.031677 0.13701,3.02278 -0.60075,5.931311 -2.94384,7.41655 -1.16643,0.88749 -0.45089,1.04475 0.23998,1.21575 -0.1081,1.35324 -3.24806,3.43646 -0.39057,3.05985 -0.66436,0.74825 0.31666,1.68944 0.18053,1.72477 -2.23325,0.47006 -4.18343,2.01719 -6.46928,2.03152 -4.64177,0.25668 -9.24635,1.01947 -13.83033,1.86064 -1.86085,-1.71727 -4.36461,-0.28593 -5.39546,1.26524 -0.37139,-1.40386 -0.77796,-3.06523 -2.45487,-2.07418 -1.95871,0.89052 -4.51407,0.77245 -6.1767,0.91127 -1.77315,2.30965 -4.28944,-0.40836 -6.42742,-0.0104 -2.27014,0.23561 -4.31716,3.70352 -6.65284,2.02806 z m 1.7307,-4.24352 c -1.09146,-1.41181 0.23917,1.60861 0,0 z m -1.81029,-0.25856 c -0.79132,-1.8222 -0.65971,1.70898 0,0 z m 3.40178,-5.78404 c -0.49055,-1.84081 -1.34096,0.9701 0,0 z m 46.1131,-4.543848 c -1.34206,-1.886642 -1.25139,1.834602 0,0 z m 0.56655,-4.302531 c 0.62603,-2.222978 -3.53194,-0.974369 -1.09785,0.226802 0.32759,0.334043 0.97603,0.355752 1.09785,-0.226802 z m -2.45643,-1.983274 c -1.55204,-1.07211 -1.11827,1.669547 0,0 z"
+       style="opacity:1;fill:#ff0000;fill-opacity:1;stroke:#4685ec;stroke-width:0.86499995;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;" />
+    <path
+       d="M 117.33132,95.746045 84.328999,35.758881 75.694158,72.873818 122.54707,22.949697 84.58035,26.206622 146.53936,55.338983 131.70948,20.236935 123.14934,88.165846 151.95068,63.214663 84.701225,76.064677 Z"
+       id="path8856"
+       style="opacity:1;fill:#0000ff;fill-opacity:1;stroke:#4685ec;stroke-width:0.86500001;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;" />
+    <rect
+       ry="14.174099"
+       rx="17.41297"
+       y="82.649841"
+       x="7.2162776"
+       height="33.408691"
+       width="84.724442"
+       id="rect8880"
+       style="opacity:1;fill:#ffff00;fill-opacity:1;stroke:#4685ec;stroke-width:0.86500001;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
   </g>
 </svg>
-
 )data";
 
 /****************************************************************************************************
 ***************************************************************************************************/
-
-std::random_device rd;
-std::mt19937 gen(rd());
-// events such as mouse and keyboard input are distributed here.
-// The area named during the event is tied to the mouse and keyboard
-// focus input.
-double sx = 1, sy = 1;
-double mx = 0, my = 0;
-double ox = 0, oy = 0;
-
-#define FAST_TEXT true
-#define DRAW_SLEEP 100
-#define NUM_SEGMENTS 10
-
 #if defined(__linux__)
 int main(int argc, char **argv) {
   // handle command line here...
@@ -362,6 +180,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
                    LPSTR lpCmdLine, int /* nCmdShow */) {
   // command line
 #endif
+
+  // create the main window area. This may this is called a Viewer object.
+  // The main browsing window. It is an element as well.
+  auto vis = platform(eventDispatch, handleError);
+
+  // starts rendering and message threads
+  // parameter notes frame per second
+  vis.startProcessing();
+  std::random_device rd;
+  std::mt19937 gen(rd());
 
   std::uniform_int_distribution<> motime(500, 5000);
 
@@ -373,83 +201,127 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */,
 #define _C color(gen)
 #define _A opac(gen)
 
-  surface_area_t vis = surface_area_t({500, 500}, "Information Title",
-                                      painter_brush_t("darkorange"));
+  vis.openWindow(
+      "Information Title", 500, 600,
+      Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}}));
 
-  vis << listen_keypress_t([&vis](auto &evt) {
-    string s = " ";
-    s[0] = evt.key;
-    // draw_text(vis, true, s);
-  });
+  // drawshapes(vis, 1);
+  drawimages(vis, 1);
+  // drawText(vis, 1, false);
 
-  vis << listen_mousemove_t([](auto &evt) {
-    if (evt.y < my) {
-      oy = oy - .1;
-    } else {
-      oy = oy + .1;
+  // clients are free to continue processing
+  // the vis.processing() is used to catch the program from exiting
+  // when the user closes the window, the switch will be false
+  double dStep = 1;
+  // measure processing time
+  thread_local std::chrono::system_clock::time_point start =
+      std::chrono::high_resolution_clock::now();
+
+
+//==========================================
+// test apparatus
+#define ANIMATE_SLEEP 100
+#define DRAW_SLEEP 1000
+
+#define ANIMATE_BACKGROUND
+#define FRAME_CHANGE
+#define SHAPES
+//#define IMAGES
+#define TEXT
+#define FAST_TEXT true
+
+#define ANIMATE_EASE 1.007
+
+
+#define NUM_SHAPES 100
+#define NUM_IMAGES 10
+
+//================================================
+
+#ifdef ANIMATE_BACKGROUND
+  std::thread thr([&vis, &motime, &coord, &ang, &color, &gen]() {
+    std::size_t mtime = motime(gen);
+    Paint p =
+        Paint(coord(gen), coord(gen), coord(gen), coord(gen),
+              {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+    double a = ang(gen);
+    while (vis.processing()) {
+
+      std::chrono::system_clock::time_point end =
+          std::chrono::high_resolution_clock::now();
+
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+              .count() > mtime) {
+        p = Paint(
+            coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+        start = std::chrono::high_resolution_clock::now();
+        a = ang(gen);
+        mtime = motime(gen);
+      }
+
+      p.rotate(PI / 180 * a);
+      a = a / ANIMATE_EASE;
+      vis.surfaceBrush(p);
+      vis.notifyComplete();
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(ANIMATE_SLEEP));
+
     }
-    if (oy < 0)
-      oy = 0;
-    // vis.deviceOffset(ox,oy);
-    mx = evt.x;
-    my = evt.y;
   });
 
-  vis.clear();
-  // draw_lines(vis);
-  std::shared_ptr<std::string> paragraph_text =
-      std::make_shared<std::string>("starting text");
-  std::shared_ptr<std::string> button_caption =
-      std::make_shared<std::string>("button text");
+  thr.detach();
+#endif
 
-  // easily index  properties for specific access later.
-  // creating shared objects allows for some interface architectures
-  // to be crafted easier.
-  vis << text_font_t("28px").index("paragraphfont");
-  vis << text_shadow_t("green") << coordinate_t{0, 100, 600, 300}
-      << text_color_t("white") << paragraph_text << '\n';
+#ifdef SHAPES
+    drawshapes(vis, 1);
+#endif
 
-  vis[paragraph_text] =
-      "New text is applied without an indirect index, more simplified syntax. ";
-  vis.get<text_font_t>("paragraphfont").description = "40px";
+#ifdef TEXT
+    drawText(vis, 1, false);
+#endif
 
-  for (int i = 0; i < 5; i++) {
-    vis << coordinate_t{i * 130.0, 200, 150, 240} << image_block_t{sSVG_BUTTON}
-        << text_shadow_t("black")
-        << text_fill_t(0, 0, 5, 30, {{"orange"}, {"yellow"}})
-        << text_outline_t(stripes) << text_font_t("16px") << line_width_t(5)
-        << coordinate_t{20.0 + i * 130.0, 210, 150, 240} << button_caption;
-  }
-
-  vis.notify_complete();
+#ifdef IMAGES
+    drawimages(vis, 1);
+#endif
+vis.notifyComplete();
   while (vis.processing()) {
+#if defined(FRAME_CHANGE)
+#if defined(SHAPES) || defined(TEXT) || defined(IMAGES)
+    vis.clear();
+#endif
+
+#ifdef SHAPES
+    drawshapes(vis, 1);
+#endif
+
+#ifdef TEXT
+    drawText(vis, 1, FAST_TEXT);
+#endif
+
+#ifdef IMAGES
+    drawimages(vis, 1);
+#endif
+
+#if defined(SHAPES) || defined(TEXT) || defined(IMAGES)
+    vis.notifyComplete();
+#endif
+#endif
     std::this_thread::sleep_for(std::chrono::milliseconds(DRAW_SLEEP));
-
-    // show_time(vis, 0, 0);
-    vis[paragraph_text] = generate_text();
-
-    // window_background.value
-
-    vis.notify_complete();
   }
 
   return 0;
 }
 
-void show_time(surface_area_t &vis, double x, double y) {
-  std::time_t t = std::time(nullptr);
-  char mbstr[100];
-  std::strftime(mbstr, sizeof(mbstr), "%A %c", std::localtime(&t));
+// events such as mouse and keyboard input are distributed here.
+// The area named during the event is tied to the mouse and keyboard
+// focus input.
+void eventDispatch(const event &evt) {}
 
-  vis << text_render_fast_t{} << text_font_t("28px")
-      << text_shadow_t("darkgrey") << coordinate_t{x, y, 600, 300}
-      << text_color_t(0, 0, 10, 10, {{"white"}, {"grey"}}) << mbstr << "  "
-      << '\n';
-}
-
-std::shared_ptr<std::string> insert_text(surface_area_t &vis, bool bfast,
-                                         string &stxt) {
-
+void drawText(platform &vis, double dStep, bool bfast) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
   std::uniform_real_distribution<> scrn(0, 400.0);
   std::uniform_real_distribution<> dcir(25.0, 100.0);
   std::uniform_real_distribution<> color(.5, 1.0);
@@ -457,68 +329,44 @@ std::shared_ptr<std::string> insert_text(surface_area_t &vis, bool bfast,
   std::uniform_real_distribution<> lw(0, 10.0);
   std::uniform_real_distribution<> coord(425.0, 600.0);
   std::uniform_int_distribution<> shape(1, 4);
+  vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen), dcir(gen));
 
 #define _C color(gen)
 #define _A opac(gen)
-  std::shared_ptr<std::string> ps = std::make_shared<std::string>(stxt);
 
-  std::uniform_int_distribution<> fill(1, 2);
+  vis.background(
+      coord(gen), coord(gen), coord(gen), coord(gen),
+      {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
 
-  if (bfast) {
-    vis << text_render_fast_t{}
-        << text_alignment_t{text_alignment_options_t::left}
-        << coordinate_t{10, 10, 300, 300} << ps;
+  vis.pen(coord(gen), coord(gen), coord(gen), coord(gen),
+          {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  vis.lineWidth(lw(gen));
 
-  } else {
-
-    vis << text_fill_t{coord(gen),
-                       coord(gen),
-                       coord(gen),
-                       coord(gen),
-                       {{_C, _C, _C, _C, _A},
-                        {_C, _C, _C, _C, _A},
-                        {_C, _C, _C, _C, _A}}}
-        << text_outline_t{coord(gen),
-                          coord(gen),
-                          coord(gen),
-                          coord(gen),
-                          {{_C, _C, _C, _C, _A},
-                           {_C, _C, _C, _C, _A},
-                           {_C, _C, _C, _C, _A}}}
-        << text_shadow_t{"green"} << line_width_t{lw(gen)}
-        << text_alignment_t{text_alignment_options_t::left}
-        << coordinate_t{10, 10, 300, 300} << ps;
-  }
-  return ps;
-}
-
-std::string generate_text(void) {
-  std::string ret;
-
+  // area is a rounded box 120,120 are the corner pixel sizes.
+  // rectangle is x-0,y=0 width=800, height = 600
+  // vis.rotate(PI / 180 * (-35 - (dStep * 35)));
+  // vis.drawArea();
   std::uniform_int_distribution<> info(1, 5);
   switch (info(gen)) {
   case 1:
-    ret = "Silver colored crafts from another galaxy seem "
-          "curiously welcomed as the memorizing audio waves "
-          "produced a canny type of music. A simple ten note. ";
+    vis.text("Silver colored crafts from another galaxy seem "
+             "curiously welcomed as the memorizing audio waves "
+             "produced a canny type of music. A simple ten note. ");
     break;
   case 2:
-    ret = "The color of text can be a choice. Yet the appearance is also a "
-          "common "
-          "desire. Creating animal letters colored with a furry texture is "
-          "great for CPU rendering work. Perhaps the flexibility of the API "
-          "gives "
-          "light to incorporating other types of computer generated graphics. ";
+    vis.text(
+        "The color of text can be a choice. Yet the appearance is a common "
+        "desire.");
     break;
   case 3:
-    ret = "Planets orbit the mass, but this is inconsequential of "
-          "the heat provided. As children, we find a balance. ";
+    vis.text("Planets orbit the mass, but this is inconsequential of "
+             "the heat provided. As children, we find a balance. ");
     break;
   case 4:
-    ret = "The sun sets casting its refraction upon the mountain side. ";
+    vis.text("The sun sets casting its refraction upon the mountain side. ");
     break;
   case 5:
-    ret =
+    vis.text(
         "The sun sets casting its refraction upon the mountain side. "
         "The glistening oil coats upon the ravens are a remark of healthiness. "
         "One that is pronounced during the day and in the moonlight. "
@@ -526,49 +374,128 @@ std::string generate_text(void) {
         "things. "
         "The warmth of the sun decays as thousands of brilliant stars dictate "
         "the continual persistence of the system.  A remarkable sight. A "
-        "heavenly home.";
+        "heavenly "
+        "home.");
     break;
   }
-  return ret;
+
+  // set the font name according to pango spi. see pango font description.
+  vis.font("50px");
+  std::uniform_int_distribution<> fill(1, 2);
+
+  if (bfast) {
+    vis.pen(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
+  } else {
+    vis.textShadow("black");
+    vis.textAlignment(alignment::left);
+
+    vis.textFill(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+    // vis.textFill(stripes);
+
+    vis.textOutline(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+  }
+
+  vis.drawText();
 }
-void draw_lines(surface_area_t &vis) {
 
-  std::uniform_real_distribution<> scrn(0, 1000);
-  std::uniform_real_distribution<> dcir(5.0, 20.0);
-  std::uniform_real_distribution<> dimen(25.0, 300.0);
-  std::uniform_real_distribution<> color(0, 1.0);
-  std::uniform_real_distribution<> opac(.5, 1);
-  std::uniform_real_distribution<> lw(7, 30.0);
-  std::uniform_real_distribution<> coord(55.0, 100.0);
-  std::uniform_int_distribution<> shape(1, 3);
-
-  vis << coordinate_t(scrn(gen), scrn(gen));
-
-  for (int c = 0; c < NUM_SEGMENTS; c++) {
-
+void drawshapes(platform &vis, double dStep) {
+  for (int c = 0; c < NUM_SHAPES; c++) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> scrn(0, 1000);
+    std::uniform_real_distribution<> dcir(5.0, 20.0);
+    std::uniform_real_distribution<> dimen(25.0, 300.0);
+    std::uniform_real_distribution<> color(0, 1.0);
+    std::uniform_real_distribution<> opac(.5, 1);
+    std::uniform_real_distribution<> lw(7, 30.0);
+    std::uniform_real_distribution<> coord(55.0, 100.0);
+    std::uniform_int_distribution<> shape(1, 4);
     switch (shape(gen)) {
     case 1:
-      vis << line_t(scrn(gen), scrn(gen));
+      vis.areaCircle(scrn(gen), scrn(gen), dimen(gen));
       break;
     case 2:
-      vis << arc_t(scrn(gen), scrn(gen), dimen(gen), dimen(gen), dimen(gen));
+      vis.areaEllipse(scrn(gen), scrn(gen), dimen(gen), dimen(gen));
       break;
     case 3:
-      vis << curve_t(scrn(gen), scrn(gen), scrn(gen), scrn(gen), scrn(gen),
-                     scrn(gen));
+      vis.area(scrn(gen), scrn(gen), dimen(gen), dimen(gen), dcir(gen),
+               dcir(gen));
+      break;
+    case 4:
+      vis.area(scrn(gen), scrn(gen), dimen(gen), dimen(gen));
       break;
     }
+#define _C color(gen)
+#define _A opac(gen)
+
+    vis.background(
+        coord(gen), coord(gen), coord(gen), coord(gen),
+        {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+
+    vis.pen(coord(gen), coord(gen), coord(gen), coord(gen),
+            {{_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}, {_C, _C, _C, _C, _A}});
+    vis.lineWidth(lw(gen));
+    vis.drawArea();
   }
-  vis << close_path_t();
+}
 
-  vis << line_width_t(lw(gen));
-  auto ps = painter_brush_t(
-      coord(gen), coord(gen), coord(gen), coord(gen),
-      {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
+void drawimages(platform &vis, double dStep) {
+  for (int i = 0; i < NUM_IMAGES; i++) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> scrn(0, 600);
+    std::uniform_real_distribution<> dcir(25.0, 100.0);
+    std::uniform_real_distribution<> color(0, 1.0);
+    std::uniform_real_distribution<> opac(.3, .6);
+    std::uniform_real_distribution<> lw(2, 10.0);
+    std::uniform_real_distribution<> coord(255.0, 1000.0);
+    std::uniform_int_distribution<> shape(1, 4);
+    switch (shape(gen)) {
+    case 1:
+      vis.areaCircle(scrn(gen), scrn(gen), dcir(gen));
+      break;
+    case 2:
+      vis.areaEllipse(scrn(gen), scrn(gen), dcir(gen), dcir(gen));
+      break;
+    case 3:
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen), dcir(gen),
+               dcir(gen));
+      break;
+    case 4:
+      vis.area(scrn(gen), scrn(gen), coord(gen), coord(gen));
+      break;
+    }
 
-  auto pf = painter_brush_t(
-      coord(gen), coord(gen), coord(gen), coord(gen),
-      {{_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}, {_C, _C, _C, _C, 1}});
-
-  vis << stroke_fill_path_t(ps, pf);
+    std::uniform_int_distribution<> imgname(1, 7);
+    switch (imgname(gen)) {
+    case 1:
+      vis.image("/home/anthony/development/platform/image/23.svg");
+      break;
+    case 2:
+      vis.image("/home/anthony/development/platform/image/art.png");
+      break;
+    case 3:
+      vis.image("/home/anthony/development/platform/image/bug.png");
+      break;
+    case 4:
+      vis.image("/home/anthony/development/platform/image/bugu.png");
+      break;
+    case 5:
+      vis.image(stripes);
+      break;
+    case 6:
+      vis.image(sSVG);
+      break;
+    case 7:
+      vis.image("/home/anthony/development/platform/image/starbubble.svg");
+      break;
+    }
+    vis.drawImage();
+  }
 }

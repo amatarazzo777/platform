@@ -1,34 +1,9 @@
-/*
- * This file is part of the PLATFORM_OBJ distribution
- * {https://github.com/amatarazzo777/platform_obj). Copyright (c) 2020 Anthony
- * Matarazzo.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
-/**
-\author Anthony Matarazzo
-\file uxdisplayunits.hpp
-\date 9/7/20
-\version 1.0
-\brief
-*/
 /**
 \author Anthony Matarazzo
 \file uxworkstate.hpp
 \date 5/12/20
 \version 1.0
- \details  Routines for cairo image_block_t
+ \details  Routines for cairo image
 
 */
 #include "uxdevice.hpp"
@@ -76,11 +51,10 @@ cairo_status_t uxdevice::read_contents(const gchar *file_name,
 
 /**
 \internal
-\brief creates an image_block_t surface from an svg.
+\brief creates an image surface from an svg.
 */
-cairo_surface_t *uxdevice::image_surface_SVG(bool bDataPassed,
-                                             std::string &info, double width,
-                                             double height) {
+cairo_surface_t *uxdevice::imageSurfaceSVG(bool bDataPassed, std::string &info,
+                                           double width, double height) {
 
   guint8 *contents = nullptr;
   gsize length = 0;
@@ -110,7 +84,7 @@ cairo_surface_t *uxdevice::image_surface_SVG(bool bDataPassed,
     goto error_exit;
   }
 
-  // scale to the image_block_t requested.
+  // scale to the image requested.
   dWidth = width;
   dHeight = height;
   rsvg_handle_get_dimensions(handle, &dimensions);
@@ -127,7 +101,7 @@ cairo_surface_t *uxdevice::image_surface_SVG(bool bDataPassed,
     dHeight /= dimensions.height;
   }
 
-  // render the image_block_t to surface
+  // render the image to surface
   img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
   status = cairo_surface_status(img);
   if (status != CAIRO_STATUS_SUCCESS) {
@@ -175,11 +149,11 @@ error_exit:
 
 /**
 \internal
-\brief reads the image_block_t and creates a cairo surface image_block_t.
+\brief reads the image and creates a cairo surface image.
 */
-cairo_surface_t *uxdevice::read_image(std::string &data, double w, double h) {
-  const string dataPNG = string("data:image/png;base64,");
-  const string dataSVG = string("<?xml");
+cairo_surface_t *uxdevice::readImage(std::string &data, double w, double h) {
+  const string dataPNG = "data:image/png;base64,";
+  const string dataSVG = "<?xml";
   cairo_surface_t *image = nullptr;
 
   if (data.size() == 0)
@@ -257,7 +231,7 @@ cairo_surface_t *uxdevice::read_image(std::string &data, double w, double h) {
     // data in passed as a SVG text?
     // use w and h set by caller.
   } else if (data.compare(0, dataSVG.size(), dataSVG) == 0) {
-    image = image_surface_SVG(true, data, w, h);
+    image = imageSurfaceSVG(true, data, w, h);
 
     // file name?
   } else if (data.find(".png") != std::string::npos) {
@@ -268,7 +242,7 @@ cairo_surface_t *uxdevice::read_image(std::string &data, double w, double h) {
       image = nullptr;
 
   } else if (data.find(".svg") != std::string::npos) {
-    image = image_surface_SVG(false, data, w, h);
+    image = imageSurfaceSVG(false, data, w, h);
   }
 
   return image;
@@ -283,7 +257,7 @@ cairo_surface_t *uxdevice::read_image(std::string &data, double w, double h) {
 /// https://gist.github.com/benjamin9999/3809142
 /// http://www.antigrain.com/__code/include/agg_blur.h.html
 /// This version works only with RGBA color
-void uxdevice::blur_image(cairo_surface_t *img, unsigned int radius) {
+void uxdevice::blurImage(cairo_surface_t *img, unsigned int radius) {
   static unsigned short const stackblur_mul[255] = {
       512, 512, 456, 512, 328, 456, 335, 512, 405, 328, 271, 456, 388, 335,
       292, 512, 454, 405, 364, 328, 298, 271, 496, 456, 420, 388, 360, 335,
@@ -581,8 +555,8 @@ void uxdevice::blur_image(cairo_surface_t *img, unsigned int radius) {
 #elif defined(USE_SVGREN)
 // box blur by Ivan Gagis <igagis@gmail.com>
 // svgren project.
-cairo_surface_t *uxdevice::blur_image(cairo_surface_t *img,
-                                      unsigned int radius) {
+cairo_surface_t *uxdevice::blurImage(cairo_surface_t *img,
+                                     unsigned int radius) {
   std::array<double, 2> stdDeviation = {static_cast<double>(radius),
                                         static_cast<double>(radius)};
   cairo_surface_t *ret = cairoImageSurfaceBlur(img, stdDeviation);
@@ -678,8 +652,8 @@ uxdevice::cairoImageSurfaceBlur(cairo_surface_t *img,
     hOffset[0] = d[0] / 2;
     hBoxSize[0] = d[0];
     hOffset[1] = d[0] / 2 - 1; // it is ok if d[0] is 0 and -1 will give a large
-    // number because box size is also 0 in that case
-    // and blur will have no effect anyway
+                               // number because box size is also 0 in that case
+                               // and blur will have no effect anyway
     hBoxSize[1] = d[0];
     hOffset[2] = d[0] / 2;
     hBoxSize[2] = d[0] + 1;
@@ -696,8 +670,8 @@ uxdevice::cairoImageSurfaceBlur(cairo_surface_t *img,
     vOffset[0] = d[1] / 2;
     vBoxSize[0] = d[1];
     vOffset[1] = d[1] / 2 - 1; // it is ok if d[0] is 0 and -1 will give a large
-    // number because box size is also 0 in that case
-    // and blur will have no effect anyway
+                               // number because box size is also 0 in that case
+                               // and blur will have no effect anyway
     vBoxSize[1] = d[1];
     vOffset[2] = d[1] / 2;
     vBoxSize[2] = d[1] + 1;

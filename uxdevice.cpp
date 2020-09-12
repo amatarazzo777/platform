@@ -1,28 +1,3 @@
-/*
- * This file is part of the PLATFORM_OBJ distribution
- * {https://github.com/amatarazzo777/platform_obj). Copyright (c) 2020 Anthony
- * Matarazzo.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
-/**
-\author Anthony Matarazzo
-\file uxdisplayunits.hpp
-\date 9/7/20
-\version 1.0
-\brief
-*/
 /**
 \file uxdevice.cpp
 
@@ -41,15 +16,13 @@ using namespace uxdevice;
 
 /**
 \internal
-\fn render_loop(void)
 \brief The routine is the main rendering thread. The thread runs
-when necessary based upon a condition variable.
-Locks are placed on the surface and
+at specific intervals. Locks are placed on the surface and
 rectangle list. The surface may change due to user resizing the gui
 window so a spin flag is used to accommodate the functionality. That is
 drawing cannot occur on the graphical while the surface is being resized.
 */
-void uxdevice::surface_area_t::render_loop(void) {
+void uxdevice::platform::renderLoop(void) {
   while (bProcessing) {
 
     // surfacePrime checks to see if the surface exists.
@@ -59,35 +32,69 @@ void uxdevice::surface_area_t::render_loop(void) {
     // of the paint event. As well, the underlying surface may
     // need to be resized. This function acquires locks on these
     // small lists for the multi-threaded necessity.
-    // searc_thes for unready and syncs display context
+    // searches for unready and syncs display context
     // if no work exists  it waits on the cvRenderWork condition variable.
-    if (context.surface_prime()) {
+    if (context.surfacePrime()) {
       context.render();
     }
 
-    if (context.error_state())
-      fnError(context.error_text());
+    if (context.errorState())
+      fnError(context.errorText());
   }
 }
 
-/**
-\internal
-\fn dispatch_event(const event_t &evt)
+/*
 \brief the dispatch routine is invoked by the messageLoop.
 If default
  * handling is to be supplied, the method invokes the
 necessary operation.
 
 */
-void uxdevice::surface_area_t::dispatch_event(const event_t &evt) {
+void uxdevice::platform::dispatchEvent(const event &evt) {
 
-  if (evt.type == std::type_index(typeid(listen_paint_t)))
-    context.state_surface(evt.x, evt.y, evt.w, evt.h);
-  else if (evt.type == std::type_index(typeid(listen_resize_t)))
-    context.resize_surface(evt.w, evt.h);
+  switch (evt.type) {
+  case eventType::none:
+    break;
+  case eventType::paint: {
+    context.stateSurface(evt.x, evt.y, evt.w, evt.h);
+  } break;
+  case eventType::resize:
+    context.resizeSurface(evt.w, evt.h);
+    break;
+  case eventType::keydown: {
 
-  if (fnEvents)
-    fnEvents(evt);
+  } break;
+  case eventType::keyup: {
+
+  } break;
+  case eventType::keypress: {
+
+  } break;
+  case eventType::mousemove:
+    break;
+  case eventType::mousedown:
+
+    break;
+  case eventType::mouseup:
+    break;
+  case eventType::wheel:
+    break;
+
+  case eventType::focus:
+    break;
+  case eventType::blur:
+    break;
+  case eventType::mouseenter:
+    break;
+  case eventType::click:
+    break;
+  case eventType::dblclick:
+    break;
+  case eventType::contextmenu:
+    break;
+  case eventType::mouseleave:
+    break;
+  }
 }
 /**
 \internal
@@ -100,19 +107,19 @@ programs as vlc, the routine simply places pixels into the memory
 buffer. while on windows the direct x library is used in combination
 with windows message queue processing.
 */
-void uxdevice::surface_area_t::start_processing(void) {
+void uxdevice::platform::startProcessing(void) {
   // setup the event dispatcher
-  event_handler_t ev = std::bind(&uxdevice::surface_area_t::dispatch_event,
-                                 this, std::placeholders::_1);
-  context.cache_threshold = 2000;
+  eventHandler ev = std::bind(&uxdevice::platform::dispatchEvent, this,
+                              std::placeholders::_1);
+  context.cacheThreshold = 2000;
   std::thread thrRenderer([=]() {
     bProcessing = true;
-    render_loop();
+    renderLoop();
   });
 
   std::thread thrMessageQueue([=]() {
     bProcessing = true;
-    message_loop();
+    messageLoop();
   });
 
   thrRenderer.detach();
@@ -120,35 +127,46 @@ void uxdevice::surface_area_t::start_processing(void) {
 }
 
 /**
-\fn get_event_vector(eventType evtType)
 \internal
 
 \brief The function maps the event id to the appropriate vector.
-This is kept statically here for retext_color_t management.
+This is kept statically here for resource management.
 
 \param eventType evtType
 */
-std::list<event_handler_t> &
-uxdevice::surface_area_t::get_event_vector(std::type_index evtType) {
-  static std::unordered_map<std::type_index, std::list<event_handler_t> &>
-      eventTypeMap = {
-          {std::type_index(typeid(listen_focus_t)), onfocus},
-          {std::type_index(typeid(listen_blur_t)), onblur},
-          {std::type_index(typeid(listen_resize_t)), onresize},
-          {std::type_index(typeid(listen_keydown_t)), onkeydown},
-          {std::type_index(typeid(listen_keyup_t)), onkeyup},
-          {std::type_index(typeid(listen_keypress_t)), onkeypress},
-          {std::type_index(typeid(listen_mouseenter_t)), onmouseenter},
-          {std::type_index(typeid(listen_mouseleave_t)), onmouseleave},
-          {std::type_index(typeid(listen_mousemove_t)), onmousemove},
-          {std::type_index(typeid(listen_mousedown_t)), onmousedown},
-          {std::type_index(typeid(listen_mouseup_t)), onmouseup},
-          {std::type_index(typeid(listen_click_t)), onclick},
-          {std::type_index(typeid(listen_dblclick_t)), ondblclick},
-          {std::type_index(typeid(listen_contextmenu_t)), oncontextmenu},
-          {std::type_index(typeid(listen_wheel_t)), onwheel}};
+vector<eventHandler> &uxdevice::platform::getEventVector(eventType evtType) {
+  static unordered_map<eventType, vector<eventHandler> &> eventTypeMap = {
+      {eventType::focus, onfocus},
+      {eventType::blur, onblur},
+      {eventType::resize, onresize},
+      {eventType::keydown, onkeydown},
+      {eventType::keyup, onkeyup},
+      {eventType::keypress, onkeypress},
+      {eventType::mouseenter, onmouseenter},
+      {eventType::mouseleave, onmouseleave},
+      {eventType::mousemove, onmousemove},
+      {eventType::mousedown, onmousedown},
+      {eventType::mouseup, onmouseup},
+      {eventType::click, onclick},
+      {eventType::dblclick, ondblclick},
+      {eventType::contextmenu, oncontextmenu},
+      {eventType::wheel, onwheel}};
   auto it = eventTypeMap.find(evtType);
   return it->second;
+}
+/**
+\internal
+\brief
+The function will return the address of a std::function for the purposes
+of equality testing. Function from
+https://stackoverflow.com/questions/20833453/comparing-stdfunctions-for-equality
+
+*/
+template <typename T, typename... U>
+size_t getAddress(std::function<T(U...)> f) {
+  typedef T(fnType)(U...);
+  fnType **fnPointer = f.template target<fnType *>();
+  return (size_t)*fnPointer;
 }
 
 #if 0
@@ -159,7 +177,7 @@ from the platform device. However, this may be invoked by the soft
 generation of events.
 
 */
-void uxdevice::surface_area_t::dispatch(const event &e) {
+void uxdevice::platform::dispatch(const event &e) {
   auto &v = getEventVector(e.evtType);
   for (auto &fn : v)
     fn(e);
@@ -167,633 +185,64 @@ void uxdevice::surface_area_t::dispatch(const event &e) {
 #endif
 
 /**
-\overload
-\fn surface_area_t() default window constructor.
+  \internal
+  \brief constructor for the platform object. The platform object is coded
+  such that each of the operating systems supported is encapsulated within
+  preprocessor blocks.
 
-
-\brief Opens a default window approximately 60% of window view area
-with the program name according to cpp macros.
-
+  \param eventHandler evtDispatcher the dispatcher routine which connects
+  the platform to the object model system. \param unsigned short width -
+  window size. \param unsigned short height - window size.
 */
-uxdevice::surface_area_t::surface_area_t() {
-  open_window(coordinate_list_t{}, DEFAULT_WINDOW_TITLE, painter_brush_t{},
-              event_handler_t{});
+uxdevice::platform::platform(const eventHandler &evtDispatcher,
+                             const errorHandler &fn)
+    : fnError(fn), fnEvents(evtDispatcher) {
+
+// initialize private members
+#if defined(__linux__)
+
+#elif defined(_WIN64)
+
+  CoInitialize(NULL);
+
+#endif
 }
-
-/**
-\overload
-\fn surface_area_t() default window constructor.
-\param const std::string &surface_area_title
-
-\brief Opens a default window approximately 60% of window view area
-with the title given. Default background, without an external window
-event handler.
-
-*/
-uxdevice::surface_area_t::surface_area_t(
-    const std::string &surface_area_title) {
-  open_window(coordinate_list_t{}, surface_area_title, painter_brush_t{},
-              event_handler_t{});
-
-  set_surface_defaults();
-}
-
-/**
-\overload
-\fn surface_area_t() default window constructor.
-\param const coordinate_list_t &coordinate_t - coordinate and
-   dimensions of the window.
-
-\brief Opens a default window approximately 60% of window view area
-with the title given. Default background, without an external window
-event handler.
-
-*/
-uxdevice::surface_area_t::surface_area_t(const coordinate_list_t &coordinate) {
-  open_window(coordinate, DEFAULT_WINDOW_TITLE, painter_brush_t{},
-              event_handler_t{});
-}
-/**
-\overload
-\fn surface_area_t() default window constructor.
-\param const std::string &surface_area_title
-
-\brief Opens a default window approximately 60% of window view area
-with the title given. Default background, without an external window
-event handler.
-
-*/
-uxdevice::surface_area_t::surface_area_t(
-    const event_handler_t &dispatch_events) {
-  open_window(coordinate_list_t{}, DEFAULT_WINDOW_TITLE, painter_brush_t{},
-              dispatch_events);
-}
-
-/**
-\overload
-\fn surface_area_t() default window constructor.
-\param const std::string &surface_area_title
-
-\brief Opens a default window approximately 60% of window view area
-with the title given. Default background, without an external window
-event handler.
-
-*/
-uxdevice::surface_area_t::surface_area_t(
-    const coordinate_list_t &coordinate,
-    const std::string &surface_area_title) {
-  open_window(coordinate, surface_area_title, painter_brush_t{},
-              event_handler_t{});
-}
-
-/**
-\overload
-\fn surface_area_t() default window constructor.
-
-\param const coordinate_list_t &coordinate
-\param const std::string &window_title
-\param const painter_brush_t &background
-
-\brief Opens a default window approximately 60% of window view area
-with the title given. Default background, without an external window
-event handler.
-
-*/
-uxdevice::surface_area_t::surface_area_t(
-    const coordinate_list_t &coordinate, const std::string &surface_area_title,
-    const painter_brush_t &surface_background_brush) {
-  open_window(coordinate, surface_area_title, surface_background_brush,
-              event_handler_t{});
-}
-
-/**
-\overload
-\fn surface_area_t() default window constructor.
-
-\param const coordinate_list_t &coordinate
-\param const std::string &window_title
-\param const event_handler_t &dispatch_events
-\param const painter_brush_t &surface_background_brush
-
-\brief Opens a window the size and position of the coordinate provided.
-The given title is used as the window title.  The background parameter serves
-as the background surface brush, When the window is cleared, this is the
-texture,color or gradient used. The window events such as focus, mouse,
-resize and paint events may be listened to by the event dispatcher. The
- event_handler_t type is used as the std::function storage type .
-
-*/
-uxdevice::surface_area_t::surface_area_t(
-    const coordinate_list_t &coordinate, const std::string &window_title,
-    const painter_brush_t &surface_background_brush,
-    const event_handler_t &dispatch_events) {
-  open_window(coordinate, window_title, surface_background_brush,
-              dispatch_events);
-}
-
 /**
   \internal
-  \brief Destructor, closes a window on the target OS
-
-
+  \brief terminates the xserver connection
+  and frees resources.
 */
-uxdevice::surface_area_t::~surface_area_t(void) { close_window(); }
-
-/**
-  \internal
-  \brief sets the defaults for the context. font, colors, etc.
-*/
-void surface_area_t::set_surface_defaults(void) { SYSTEM_DEFAULTS }
-
-/**
-\brief API interface, just data is passed to objects. Objects are
-dynamically allocated as classes derived from a unit base. Mutex is used one
-display list to not get in the way of the rendering loop,
-
-*/
-
-/**
-\fn clear(void)
-
-\brief clears the display list and the context. However the brush
-is not cleared.  The display and all objects are released.
-*/
-
-void uxdevice::surface_area_t::clear(void) {
+uxdevice::platform::~platform() {
   context.clear();
-  display_list_clear();
+  closeWindow();
+
+#if defined(__linux__)
+
+#elif defined(_WIN64)
+  CoUninitialize();
+
+#endif
 }
-
-/**
-\fn notify_complete(void)
-
-\brief An essential and very important function that releases the
-wait state within the renderer. Without calling this function,
-no paint will occur unless the timeout is met. The timeout
-is not added yet. Essentially this increases the through put
-capabilities to top computer speed. This can show system problems
-and deadlocks much easier and allow analysis of performance issues
-or more informative cpu usage since the data perception is changed.
-
-*/
-void uxdevice::surface_area_t::notify_complete(void) {
-  context.state_notify_complete();
-}
-
-/**
-\brief called by each of thedisplay unit objects to index the item if a key
-exists. A key can be given as a text_data_t or an integer. The [] operator is
-used to access the data.
-*/
-void uxdevice::surface_area_t::maintain_index(
-    const std::shared_ptr<display_unit_t> obj) {
-  if (!std::holds_alternative<std::monostate>(obj->key))
-    mapped_objects[obj->key] = obj;
-  return;
-}
-
-/**
-\internal
-\fn stream input
-\overload
-\param const std::string &s
-
-\brief A stream interface routine that is declared using the
-UX_DECLARE_STREAM_INTERFACE macro within the device published development API.
-uxdevice.hpp is where is interface is declared.
-
-The routine is specialized because it creates a textual_rendering_t object
-that accepts the textual data. Textual data is stored in a separate object.
-The textual_rendering_t object encapsulates the pango cairo api functions
-which is also added.
-
-*/
-surface_area_t &uxdevice::surface_area_t::stream_input(const std::string &s) {
-  auto item = display_list<text_data_t>(s);
-  auto textrender = display_list<textual_render_t>();
-  return *this;
-}
-
-/**
-\internal
-\fn stream input
-\overload
-
-\param const std::shared_ptr<std::string> _val
-
-\brief An overloaded stream interface implemetatione that is declared using
-the UX_DECLARE_STREAM_INTERFACE macro inside the uxdevice::surface_area_t class.
-
-\details The routine is specialized because it creates
-a textual_rendering_t object that accepts the textual data. Textual data is
-stored in a separate object. The textual_rendering_t object encapsulates the
-pango cairo api functions.
-
-*/
-//////////////////////////////////////////logic bugs, where left off
-surface_area_t &uxdevice::surface_area_t::stream_input(
-    const std::shared_ptr<std::string> _val) {
-  auto item = display_list<text_data_t>(*_val);
-  item->key = reinterpret_cast<std::size_t>(_val.get());
-  auto textrender = display_list<textual_render_t>();
-  return *this;
-}
-
-/**
-\internal
-\fn stream input
-\overload
-
-\param const std::stringstream &_val
-
-\brief An overloaded stream interface implemetatione that is declared using
-the UX_DECLARE_STREAM_INTERFACE macro inside the uxdevice::surface_area_t class.
-The macro only declares the interface prototypes. The implementation for the
-specific type is below.
-
-\details The routine is specialized because it creates
-a textual_rendering_t object that accepts the textual data. Textual data is
-stored in a separate object. The textual_rendering_t object encapsulates the
-pango cairo api functions.
-
-*/
-surface_area_t &
-uxdevice::surface_area_t::stream_input(const std::stringstream &_val) {
-  auto item = display_list<text_data_t>(_val.str());
-  auto textrender = display_list<textual_render_t>();
-  return *this;
-}
-
-/**
-
-\fn save
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::save(void) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_save, _1));
-  return *this;
-}
-
-/**
-
-\fn restore
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::restore(void) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_restore, _1));
-  return *this;
-}
-
-/**
-
-\fn push
-\param content_options_t c
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::push(content_options_t c) {
-  using namespace std::placeholders;
-
-  if (c == content_options_t::all)
-    display_list<function_object_t>(std::bind(cairo_push_group, _1));
-  else
-    display_list<function_object_t>(std::bind(cairo_push_group_with_content, _1,
-                                              static_cast<cairo_content_t>(c)));
-
-  return *this;
-}
-
-/**
-
-\fn pop
-\param bool bToSource
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::pop(bool bToSource) {
-  using namespace std::placeholders;
-
-  if (bToSource)
-    display_list<function_object_t>(std::bind(cairo_pop_group_to_source, _1));
-  else
-    display_list<function_object_t>(std::bind(cairo_pop_group, _1));
-
-  return *this;
-}
-
-/**
-
-\fn translate
-\param painter_brush_t &b
-\param double x
-\param  double y
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::translate(double x, double y) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_translate, _1, x, y));
-  return *this;
-}
-
-/**
-
-\fn rotate
-\param  double angle
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::rotate(double angle) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_rotate, _1, angle));
-  return *this;
-}
-
-/**
-
-\fn device_offset
-\param  double x
-\param  double y
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::device_offset(double x, double y) {
-  context.device_offset(x, y);
-  return *this;
-}
-
-/**
-
-\fn device_scale
-\param  double x
-\param  double y
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::device_scale(double x, double y) {
-  context.device_scale(x, y);
-  return *this;
-}
-
-/**
-
-\fn scale
-\param  double x
-\param  double y
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::scale(double x, double y) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_scale, _1, x, y));
-  return *this;
-}
-
-/**
-
-\fn transform
-\param const Matrix &m
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::transform(const Matrix &m) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_transform, _1, &m._matrix));
-  return *this;
-}
-
-/**
-
-\fn matrix
-\param const Matrix &m
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::matrix(const Matrix &m) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_set_matrix, _1, &m._matrix));
-  return *this;
-}
-
-/**
-
-\fn identity
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::identity(void) {
-  using namespace std::placeholders;
-  display_list<function_object_t>(std::bind(cairo_identity_matrix, _1));
-  return *this;
-}
-
-/**
-
-\fn device
-\param double &x
-\param  double &y
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::device(double &x, double &y) {
-  using namespace std::placeholders;
-
-  auto fn = [](cairo_t *cr, double &x, double &y) {
-    double _x = x;
-    double _y = y;
-    cairo_user_to_device(cr, &_x, &_y);
-    x = _x;
-    y = _y;
-  };
-
-  display_list<function_object_t>(std::bind(fn, _1, x, y));
-
-  return *this;
-}
-
-/**
-
-\fn device_distance
-\param double &x
-\param  double &y
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::device_distance(double &x,
-                                                          double &y) {
-  using namespace std::placeholders;
-
-  auto fn = [](cairo_t *cr, double &x, double &y) {
-    double _x = x;
-    double _y = y;
-    cairo_user_to_device_distance(cr, &_x, &_y);
-    x = _x;
-    y = _y;
-  };
-
-  display_list<function_object_t>(std::bind(fn, _1, x, y));
-
-  return *this;
-}
-
-/**
-
-\fn user
-\param double &x
-\param  double &y
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::user(double &x, double &y) {
-  using namespace std::placeholders;
-
-  auto fn = [](cairo_t *cr, double &x, double &y) {
-    double _x = x, _y = y;
-    cairo_device_to_user(cr, &_x, &_y);
-    x = _x;
-    y = _y;
-  };
-
-  display_list<function_object_t>(std::bind(fn, _1, x, y));
-
-  return *this;
-}
-
-/**
-
-\fn user_distance
-\param double &x
-\param  double &y
-
-\brief
-
-\details
-
-
- */
-surface_area_t &uxdevice::surface_area_t::user_distance(double &x, double &y) {
-  using namespace std::placeholders;
-
-  auto fn = [](cairo_t *cr, double &x, double &y) {
-    double _x = x, _y = y;
-    cairo_device_to_user_distance(cr, &_x, &_y);
-    x = _x;
-    y = _y;
-  };
-
-  display_list<function_object_t>(std::bind(fn, _1, x, y));
-
-  return *this;
-}
-
-/**
-
-\fn draw_caret
-\param const int x
-\param const int y,
-\param  const int h
-\param painter_brush_t &b
-
-\brief
-
-\details
-
-
- */
-void uxdevice::surface_area_t::draw_caret(const int x, const int y,
-                                          const int h) {}
-
-std::string _errorReport(std::string text_color_tFile, int ln,
-                         std::string sfunc, std::string cond,
-                         std::string ecode) {
-  std::stringstream ss;
-  ss << text_color_tFile << "(" << ln << ") " << sfunc << "  " << cond << ecode;
-  return ss.str();
-}
-
 /**
   \internal
-  \brief opens a window on the target OS. used by all of the constuctors.
-  parameters may be nulled or defaulted.
-
+  \brief opens a window on the target OS
 
 */
-void uxdevice::surface_area_t::open_window(
-    const coordinate_list_t &coord, const std::string &sWindowTitle,
-    const painter_brush_t &background, const event_handler_t &dispatch_events) {
-  surface_area_t ret;
-  auto it = coord.begin();
+void uxdevice::platform::openWindow(const std::string &sWindowTitle,
+                                    const unsigned short width,
+                                    const unsigned short height,
+                                    Paint background) {
 
-  context.window_width = *it;
-  it++;
-  context.window_height = *it;
+  context.windowWidth = width;
+  context.windowHeight = height;
   context.brush = background;
 
+#if defined(__linux__)
   // this open provides interoperability between xcb and xwindows
   // this is used here because of the necessity of key mapping.
   context.xdisplay = XOpenDisplay(nullptr);
   if (!context.xdisplay) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -803,7 +252,7 @@ void uxdevice::surface_area_t::open_window(
   /* get the connection to the X server */
   context.connection = XGetXCBConnection(context.xdisplay);
   if (!context.xdisplay) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -814,7 +263,7 @@ void uxdevice::surface_area_t::open_window(
   context.screen =
       xcb_setup_roots_iterator(xcb_get_setup(context.connection)).data;
   if (!context.screen) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -823,7 +272,7 @@ void uxdevice::surface_area_t::open_window(
 
   context.syms = xcb_key_symbols_alloc(context.connection);
   if (!context.syms) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -839,7 +288,7 @@ void uxdevice::surface_area_t::open_window(
                 values);
 
   if (!context.graphics) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -862,8 +311,8 @@ void uxdevice::surface_area_t::open_window(
 
   xcb_create_window(context.connection, XCB_COPY_FROM_PARENT, context.window,
                     context.screen->root, 0, 0,
-                    static_cast<unsigned short>(context.window_width),
-                    static_cast<unsigned short>(context.window_height), 0,
+                    static_cast<unsigned short>(context.windowWidth),
+                    static_cast<unsigned short>(context.windowHeight), 0,
                     XCB_WINDOW_CLASS_INPUT_OUTPUT, context.screen->root_visual,
                     mask, vals);
   // set window title
@@ -872,7 +321,7 @@ void uxdevice::surface_area_t::open_window(
                       sWindowTitle.data());
 
   if (!context.window) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_XWIN "
            << "  " << __FILE__ << " " << __func__;
@@ -899,9 +348,9 @@ void uxdevice::surface_area_t::open_window(
 
   context.xcbSurface = cairo_xcb_surface_create(
       context.connection, context.window, context.visualType,
-      context.window_width, context.window_height);
+      context.windowWidth, context.windowHeight);
   if (!context.xcbSurface) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_CAIRO "
            << "  " << __FILE__ << " " << __func__;
@@ -911,7 +360,7 @@ void uxdevice::surface_area_t::open_window(
   // create cairo context
   context.cr = cairo_create(context.xcbSurface);
   if (!context.cr) {
-    close_window();
+    closeWindow();
     std::stringstream sError;
     sError << "ERR_CAIRO "
            << "  " << __FILE__ << " " << __func__;
@@ -921,31 +370,104 @@ void uxdevice::surface_area_t::open_window(
   /* Map the window on the screen and flush*/
   xcb_map_window(context.connection, context.window);
   xcb_flush(context.connection);
-  context.window_open = true;
+  context.windowOpen = true;
 
   cairo_surface_flush(context.xcbSurface);
-  start_processing();
 
   return;
+
+#elif defined(_WIN64)
+
+  // Register the window class.
+  WNDCLASSEX wcex = {sizeof(WNDCLASSEX)};
+  wcex.style = CS_HREDRAW | CS_VREDRAW;
+  wcex.lpfnWndProc = &uxdevice::platform::WndProc;
+  wcex.cbClsExtra = 0;
+  wcex.cbWndExtra = sizeof(LONG_PTR);
+  wcex.hInstance = HINST_THISCOMPONENT;
+  wcex.hbrBackground = NULL;
+  wcex.lpszMenuName = NULL;
+  wcex.hCursor = LoadCursor(NULL, IDI_APPLICATION);
+  wcex.lpszClassName = "viewManagerApp";
+  RegisterClassEx(&wcex);
+  // Create the window.
+  context.hwnd = CreateWindow("viewManagerApp", sWindowTitle.data(),
+                              WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+                              static_cast<UINT>(context.windowWidth),
+                              static_cast<UINT>(context.windowHeighth), NULL,
+                              NULL, HINST_THISCOMPONENT, 0L);
+
+  SetWindowLongPtr(context.hwnd, GWLP_USERDATA, (long long)this);
+
+  if (!initializeVideo())
+    throw std::runtime_error("Could not initialize direct x video subsystem.");
+
+  // create offscreen bitmap
+  resize(context.windowWidth, context.windowHeight);
+
+  ShowWindow(context.hwnd, SW_SHOWNORMAL);
+  UpdateWindow(context.hwnd);
+  context.windowOpen = true;
+
+#endif
 }
+
+/**
+  \internal
+  \brief Initialize the directx video system.
+
+  Orginal code from
+*/
+#if defined(_WIN64)
+bool uxdevice::platform::initializeVideo() {
+  HRESULT hr;
+
+  // Create a Direct2D factory.
+  hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                         &context.pD2DFactory);
+
+  RECT rc;
+  GetClientRect(context.hwnd, &rc);
+
+  D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
+
+  // Create a Direct2D render target.
+  hr = context.pD2DFactory->CreateHwndRenderTarget(
+      D2D1::RenderTargetProperties(),
+      D2D1::HwndRenderTargetProperties(context.hwnd, size),
+      &context.pRenderTarget);
+  return true;
+}
+
+/**
+  \brief terminateVideo
+  \description the routine frees the resources of directx.
+*/
+void uxdevice::platform::terminateVideo(void) {
+  context.pD2DFactory->Release();
+  context.pRenderTarget->Release();
+}
+
+#endif
+
 /**
   \internal
   \brief closes a window on the target OS
 
 
 */
-void uxdevice::surface_area_t::close_window(void) {
+void uxdevice::platform::closeWindow(void) {
+
+#if defined(__linux__)
 
   if (context.xcbSurface) {
     cairo_surface_destroy(context.xcbSurface);
     context.xcbSurface = nullptr;
   }
-
   if (context.cr) {
     cairo_destroy(context.cr);
     context.cr = nullptr;
   }
-
   if (context.graphics) {
     xcb_free_gc(context.connection, context.graphics);
     context.graphics = 0;
@@ -960,14 +482,144 @@ void uxdevice::surface_area_t::close_window(void) {
     xcb_destroy_window(context.connection, context.window);
     context.window = 0;
   }
-
   if (context.xdisplay) {
     XCloseDisplay(context.xdisplay);
     context.xdisplay = nullptr;
   }
 
-  context.window_open = false;
+
+  context.windowOpen = false;
+
+#elif defined(_WIN64)
+
+#endif
 }
+
+#if defined(_WIN64)
+
+/**
+\internal
+\brief The default window message processor for the application.
+This is the version of the Microsoft Windows operating system.
+
+*/
+LRESULT CALLBACK uxdevice::platform::WndProc(HWND hwnd, UINT message,
+                                             WPARAM wParam, LPARAM lParam) {
+  LRESULT result = 0;
+  bool handled = false;
+  /** get the platform objext which is stored within the user data of the
+   window. this is necessary as the wndproc for the windows operating system
+   is called from an external library. The routine needs to be a static
+   implementation which is not directly locate within the class.
+  */
+  LONG_PTR lpUserData = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+  platform *platformInstance = (platform *)lpUserData;
+  switch (message) {
+  case WM_SIZE:
+    platformInstance->dispatchEvent(event{eventType::resize,
+                                          static_cast<short>(LOWORD(lParam)),
+                                          static_cast<short>(HIWORD(lParam))});
+    result = 0;
+    handled = true;
+    break;
+  case WM_KEYDOWN: {
+    UINT scandCode = (lParam >> 8) & 0xFFFFFF00;
+    platformInstance->dispatchEvent(
+        event{eventType::keydown, (unsigned int)wParam});
+    handled = true;
+  } break;
+  case WM_KEYUP: {
+    UINT scandCode = (lParam >> 8) & 0xFFFFFF00;
+    platformInstance->dispatchEvent(
+        event{eventType::keyup, (unsigned int)wParam});
+    handled = true;
+  } break;
+  case WM_CHAR: {
+    // filter out some of the control keys that
+    // slip through such as the back and tab keys
+    if (wParam > 27) {
+      WCHAR tmp[2];
+      tmp[0] = wParam;
+      tmp[1] = 0x00;
+      char ch = wParam;
+      platformInstance->dispatchEvent(event{eventType::keypress, ch});
+      handled = true;
+    }
+  } break;
+  case WM_LBUTTONDOWN:
+    platformInstance->dispatchEvent(
+        event{eventType::mousedown, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 1});
+    handled = true;
+    break;
+  case WM_LBUTTONUP:
+    platformInstance->dispatchEvent(
+        event{eventType::mouseup, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 1});
+    handled = true;
+    break;
+  case WM_MBUTTONDOWN:
+    platformInstance->dispatchEvent(
+        event{eventType::mousedown, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 2});
+    handled = true;
+    break;
+  case WM_MBUTTONUP:
+    platformInstance->dispatchEvent(
+        event{eventType::mouseup, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 2});
+    handled = true;
+    break;
+  case WM_RBUTTONDOWN:
+    platformInstance->dispatchEvent(
+        event{eventType::mousedown, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 3});
+    handled = true;
+    break;
+  case WM_RBUTTONUP:
+    platformInstance->dispatchEvent(
+        event{eventType::mouseup, static_cast<short>(LOWORD(lParam)),
+              static_cast<short>(HIWORD(lParam)), 3});
+    handled = true;
+    break;
+  case WM_MOUSEMOVE:
+    platformInstance->dispatchEvent(event{eventType::mousemove,
+                                          static_cast<short>(LOWORD(lParam)),
+                                          static_cast<short>(HIWORD(lParam))});
+    result = 0;
+    handled = true;
+    break;
+  case WM_MOUSEWHEEL: {
+    platformInstance->dispatchEvent(event{
+        eventType::wheel, static_cast<short>(LOWORD(lParam)),
+        static_cast<short>(HIWORD(lParam)), GET_WHEEL_DELTA_WPARAM(wParam)});
+    handled = true;
+  } break;
+  case WM_DISPLAYCHANGE:
+    InvalidateRect(hwnd, NULL, FALSE);
+    result = 0;
+    handled = true;
+    break;
+  case WM_PAINT: {
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(hwnd, &ps);
+    platformInstance->dispatchEvent(event{eventType::paint});
+    EndPaint(hwnd, &ps);
+    ValidateRect(hwnd, NULL);
+    result = 0;
+    handled = true;
+  } break;
+  case WM_DESTROY:
+    PostQuitMessage(0);
+    result = 1;
+    handled = true;
+    break;
+  }
+  if (!handled)
+    result = DefWindowProc(hwnd, message, wParam, lParam);
+  return result;
+}
+#endif
 
 /**
 \internal
@@ -975,7 +627,8 @@ void uxdevice::surface_area_t::close_window(void) {
 operating system. The function is called from processEvents.
 
 */
-void uxdevice::surface_area_t::message_loop(void) {
+void uxdevice::platform::messageLoop(void) {
+#if defined(__linux__)
   xcb_generic_event_t *xcbEvent;
 
   // is window open?
@@ -1000,10 +653,9 @@ void uxdevice::surface_area_t::message_loop(void) {
 
   // process Message queue
   std::list<xcb_generic_event_t *> xcbEvents;
-  bool bvideo_output = false;
   while (bProcessing && (xcbEvent = xcb_wait_for_event(context.connection))) {
     xcbEvents.emplace_back(xcbEvent);
-    bvideo_output = false;
+
     // qt5 does this, it queues all of the input messages at once.
     // this makes the processing of painting and reading input faster.
     while (bProcessing &&
@@ -1016,8 +668,8 @@ void uxdevice::surface_area_t::message_loop(void) {
       case XCB_MOTION_NOTIFY: {
         xcb_motion_notify_event_t *motion =
             (xcb_motion_notify_event_t *)xcbEvent;
-        dispatch_event(event_t{
-            std::type_index{typeid(listen_mousemove_t)},
+        dispatchEvent(event{
+            eventType::mousemove,
             (short)motion->event_x,
             (short)motion->event_y,
         });
@@ -1026,16 +678,13 @@ void uxdevice::surface_area_t::message_loop(void) {
         xcb_button_press_event_t *bp = (xcb_button_press_event_t *)xcbEvent;
         if (bp->detail == XCB_BUTTON_INDEX_4 ||
             bp->detail == XCB_BUTTON_INDEX_5) {
-          dispatch_event(
-              event_t{std::type_index{typeid(listen_wheel_t)},
-                      (short)bp->event_x, (short)bp->event_y,
-                      (short)(bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1)});
+          dispatchEvent(
+              event{eventType::wheel, (short)bp->event_x, (short)bp->event_y,
+                    (short)(bp->detail == XCB_BUTTON_INDEX_4 ? 1 : -1)});
 
         } else {
-
-          dispatch_event(event_t{std::type_index{typeid(listen_mousedown_t)},
-                                 (short)bp->event_x, (short)bp->event_y,
-                                 (short)bp->detail});
+          dispatchEvent(event{eventType::mousedown, (short)bp->event_x,
+                              (short)bp->event_y, (short)bp->detail});
         }
       } break;
       case XCB_BUTTON_RELEASE: {
@@ -1043,9 +692,8 @@ void uxdevice::surface_area_t::message_loop(void) {
         // ignore button 4 and 5 which are wheel events.
         if (br->detail != XCB_BUTTON_INDEX_4 &&
             br->detail != XCB_BUTTON_INDEX_5)
-          dispatch_event(event_t{std::type_index{typeid(listen_mouseup_t)},
-                                 (short)br->event_x, (short)br->event_y,
-                                 (short)br->detail});
+          dispatchEvent(event{eventType::mouseup, (short)br->event_x,
+                              (short)br->event_y, (short)br->detail});
       } break;
       case XCB_KEY_PRESS: {
         xcb_key_press_event_t *kp = (xcb_key_press_event_t *)xcbEvent;
@@ -1055,45 +703,33 @@ void uxdevice::surface_area_t::message_loop(void) {
           keyEvent.display = context.xdisplay;
           keyEvent.keycode = kp->detail;
           keyEvent.state = kp->state;
-          keyEvent.root = kp->root;
-          keyEvent.time = kp->time;
-          keyEvent.window = kp->event;
-          keyEvent.serial = kp->sequence;
-
-          std::array<char, 316> buf{};
+          std::array<char, 16> buf{};
           if (XLookupString(&keyEvent, buf.data(), buf.size(), nullptr,
                             nullptr))
-            dispatch_event(event_t{std::type_index{typeid(listen_keypress_t)},
-                                   (char)buf[0]});
+            dispatchEvent(event{eventType::keypress, (char)buf[0]});
         } else {
-          dispatch_event(
-              event_t{std::type_index{typeid(listen_keydown_t)}, sym});
+          dispatchEvent(event{eventType::keydown, sym});
         }
       } break;
       case XCB_KEY_RELEASE: {
         xcb_key_release_event_t *kr = (xcb_key_release_event_t *)xcbEvent;
         xcb_keysym_t sym = xcb_key_press_lookup_keysym(context.syms, kr, 0);
-        dispatch_event(event_t{std::type_index{typeid(listen_keyup_t)}});
+        dispatchEvent(event{eventType::keyup, sym});
       } break;
       case XCB_EXPOSE: {
         xcb_expose_event_t *eev = (xcb_expose_event_t *)xcbEvent;
 
-        dispatch_event(event_t{std::type_index{typeid(listen_paint_t)},
-                               (short)eev->x, (short)eev->y, (short)eev->width,
-                               (short)eev->height});
-        bvideo_output = true;
+        dispatchEvent(event{eventType::paint, (short)eev->x, (short)eev->y,
+                            (short)eev->width, (short)eev->height});
+
       } break;
       case XCB_CONFIGURE_NOTIFY: {
         const xcb_configure_notify_event_t *cfgEvent =
             (const xcb_configure_notify_event_t *)xcbEvent;
 
-        if (cfgEvent->window == context.window &&
-            ((short)cfgEvent->width != context.window_width ||
-             (short)cfgEvent->height != context.window_height)) {
-          dispatch_event(event_t{std::type_index{typeid(listen_resize_t)},
-                                 (short)cfgEvent->width,
-                                 (short)cfgEvent->height});
-          bvideo_output = true;
+        if (cfgEvent->window == context.window) {
+          dispatchEvent(event{eventType::resize, (short)cfgEvent->width,
+                              (short)cfgEvent->height});
         }
       } break;
       case XCB_CLIENT_MESSAGE: {
@@ -1106,8 +742,1014 @@ void uxdevice::surface_area_t::message_loop(void) {
       free(xcbEvent);
       xcbEvents.pop_front();
     }
-
-    if (bvideo_output)
-      context.state_notify_complete();
+    context.stateNotifyComplete();
   }
+#elif defined(_WIN64)
+  MSG msg;
+  while (GetMessage(&msg, NULL, 0, 0)) {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+  }
+#endif
+}
+
+/**
+\brief API interface, just data is passed to objects. Objects are
+dynamically allocated as classes derived from a unit base. Mutex is used one
+display list to not get in the way of the rendering loop,
+
+*/
+
+/**
+\brief clears the display list
+*/
+
+void uxdevice::platform::clear(void) {
+  DL_SPIN;
+  context.clear();
+  DL.clear();
+  DL_CLEAR;
+}
+void uxdevice::platform::notifyComplete(void) { context.stateNotifyComplete(); }
+
+void uxdevice::platform::antiAlias(antialias antialias) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<ANTIALIAS>(antialias));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<ANTIALIAS>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief sets the text
+*/
+void uxdevice::platform::text(const std::string &s) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<STRING>(s));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<STRING>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::text(const std::stringstream &s) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<STRING>(s.str()));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<STRING>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::image(const std::string &s) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<IMAGE>(s));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<IMAGE>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::pen(const Paint &p) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(p));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::pen(u_int32_t c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::pen(const string &c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::pen(const std::string &c, double w, double h) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(c, w, h));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::pen(double _r, double _g, double _b) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(_r, _g, _b));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::pen(double _r, double _g, double _b, double _a) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(_r, _g, _b, _a));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::pen(double x0, double y0, double x1, double y1,
+                             const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<PEN>(x0, y0, x1, y1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::pen(double cx0, double cy0, double radius0, double cx1,
+                             double cy1, double radius1, const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<PEN>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<PEN>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::surfaceBrush(Paint &b) { context.surfaceBrush(b); }
+/**
+\brief
+*/
+void uxdevice::platform::background(const Paint &p) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(p));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(u_int32_t c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(const string &c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(const std::string &c, double w, double h) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(c, w, h));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::background(double _r, double _g, double _b) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(double _r, double _g, double _b,
+                                    double _a) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(_r, _g, _b, _a));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(double x0, double y0, double x1, double y1,
+                                    const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<BACKGROUND>(x0, y0, x1, y1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::background(double cx0, double cy0, double radius0,
+                                    double cx1, double cy1, double radius1,
+                                    const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<BACKGROUND>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<BACKGROUND>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textAlignment(alignment aln) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<ALIGN>(aln));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<ALIGN>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(const Paint &p, double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(p, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textOutline(u_int32_t c, double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(const string &c, double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textOutline(const std::string &c, double w, double h,
+                                     double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(c, w, h, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(double _r, double _g, double _b,
+                                     double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textOutline(double _r, double _g, double _b, double _a,
+                                     double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(_r, _g, _b, _a, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textOutline(double x0, double y0, double x1, double y1,
+                                     const ColorStops &cs, double dWidth) {
+  DL_SPIN;
+  auto item =
+      DL.emplace_back(make_shared<TEXTOUTLINE>(x0, y0, x1, y1, cs, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::textOutline(double cx0, double cy0, double radius0,
+                                     double cx1, double cy1, double radius1,
+                                     const ColorStops &cs, double dWidth) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTOUTLINE>(
+      cx0, cy0, radius0, cx1, cy1, radius1, cs, dWidth));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTOUTLINE>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief clears the current text outline from the context.
+*/
+void uxdevice::platform::textOutlineNone(void) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<CLEARUNIT>(
+      [=]() { context.currentUnits.textoutline.reset(); }));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+void uxdevice::platform::textFill(const Paint &p) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(p));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(u_int32_t c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(const string &c) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(const string &c, double w, double h) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(c, w, h));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(double _r, double _g, double _b) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(double _r, double _g, double _b, double _a) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(_r, _g, _b, _a));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(double x0, double y0, double x1, double y1,
+                                  const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTFILL>(x0, y0, x1, y1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textFill(double cx0, double cy0, double radius0,
+                                  double cx1, double cy1, double radius1,
+                                  const ColorStops &cs) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<TEXTFILL>(cx0, cy0, radius0, cx1, cy1, radius1, cs));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTFILL>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief clears the current text fill from the context.
+*/
+void uxdevice::platform::textFillNone(void) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<CLEARUNIT>([=]() { context.currentUnits.textfill.reset(); }));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(const Paint &p, int r, double xOffset,
+                                    double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(p, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textShadow(u_int32_t c, int r, double xOffset,
+                                    double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(const string &c, int r, double xOffset,
+                                    double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(c, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+void uxdevice::platform::textShadow(const std::string &c, double w, double h,
+                                    int r, double xOffset, double yOffset) {
+  DL_SPIN;
+  auto item =
+      DL.emplace_back(make_shared<TEXTSHADOW>(c, w, h, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(double _r, double _g, double _b, int r,
+                                    double xOffset, double yOffset) {
+  DL_SPIN;
+  auto item =
+      DL.emplace_back(make_shared<TEXTSHADOW>(_r, _g, _b, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::textShadow(double _r, double _g, double _b, double _a,
+                                    int r, double xOffset, double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<TEXTSHADOW>(_r, _g, _b, _a, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::textShadow(double x0, double y0, double x1, double y1,
+                                    const ColorStops &cs, int r, double xOffset,
+                                    double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(
+      make_shared<TEXTSHADOW>(x0, y0, x1, y1, cs, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::textShadow(double cx0, double cy0, double radius0,
+                                    double cx1, double cy1, double radius1,
+                                    const ColorStops &cs, int r, double xOffset,
+                                    double yOffset) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<TEXTSHADOW>(
+      cx0, cy0, radius0, cx1, cy1, radius1, cs, r, xOffset, yOffset));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<TEXTSHADOW>(item));
+  DL_CLEAR;
+}
+
+/**
+\brief clears the current text fill from the context.
+*/
+void uxdevice::platform::textShadowNone(void) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<CLEARUNIT>(
+      [=]() { context.currentUnits.textshadow.reset(); }));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::font(const std::string &s) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<FONT>(s));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<FONT>(item));
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::area(double x, double y, double w, double h) {
+  DL_SPIN;
+  auto item =
+      DL.emplace_back(make_shared<AREA>(areaType::rectangle, x, y, w, h));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<AREA>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::area(double x, double y, double w, double h, double rx,
+                              double ry) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<AREA>(x, y, w, h, rx, ry));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<AREA>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::areaCircle(double x, double y, double d) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<AREA>(x, y, d / 2));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<AREA>(item));
+  DL_CLEAR;
+}
+
+void uxdevice::platform::areaEllipse(double cx, double cy, double rx,
+                                     double ry) {
+  DL_SPIN;
+  auto item =
+      DL.emplace_back(make_shared<AREA>(areaType::ellipse, cx, cy, rx, ry));
+  item->invoke(context);
+  context.setUnit(std::dynamic_pointer_cast<AREA>(item));
+
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::drawText(void) {
+  DL_SPIN;
+  auto item = DL.emplace_back(make_shared<DRAWTEXT>());
+  item->invoke(context);
+  DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::drawImage(void) {
+  DL_SPIN;
+
+  auto item = DL.emplace_back(make_shared<DRAWIMAGE>());
+  item->invoke(context);
+  DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
+}
+/**
+\brief
+*/
+void uxdevice::platform::drawArea(void) {
+  DL_SPIN;
+
+  auto item = DL.emplace_back(std::make_shared<DRAWAREA>());
+  item->invoke(context);
+  DL_CLEAR;
+  context.addDrawable(std::dynamic_pointer_cast<DrawingOutput>(item));
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::save(void) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_save, _1);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::restore(void) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_restore, _1);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+void uxdevice::platform::push(content c) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (c == content::all) {
+    func = std::bind(cairo_push_group, _1);
+  } else {
+    func = std::bind(cairo_push_group_with_content, _1,
+                     static_cast<cairo_content_t>(c));
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+void uxdevice::platform::pop(bool bToSource) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bToSource) {
+    func = std::bind(cairo_pop_group_to_source, _1);
+  } else {
+    func = std::bind(cairo_pop_group, _1);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::translate(double x, double y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_translate, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::rotate(double angle) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_rotate, _1, angle);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::scale(double x, double y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_scale, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::transform(const Matrix &m) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_transform, _1, &m._matrix);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::matrix(const Matrix &m) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_set_matrix, _1, &m._matrix);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::identity(void) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_identity_matrix, _1);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::device(double &x, double &y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x;
+    double _y = y;
+    cairo_user_to_device(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::deviceDistance(double &x, double &y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x;
+    double _y = y;
+    cairo_user_to_device_distance(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+/**
+\brief
+*/
+void uxdevice::platform::user(double &x, double &y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x, _y = y;
+    cairo_device_to_user(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::userDistance(double &x, double &y) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  auto fn = [](cairo_t *cr, double &x, double &y) {
+    double _x = x, _y = y;
+    cairo_device_to_user_distance(cr, &_x, &_y);
+    x = _x;
+    y = _y;
+  };
+
+  CAIRO_FUNCTION func = std::bind(fn, _1, x, y);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::cap(lineCap c) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_OPTION func =
+      std::bind(cairo_set_line_cap, _1, static_cast<cairo_line_cap_t>(c));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::join(lineJoin j) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_line_join, _1, static_cast<cairo_line_join_t>(j));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::lineWidth(double dWidth) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_set_line_width, _1, dWidth);
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::miterLimit(double dLimit) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_set_miter_limit, _1, dLimit);
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::dashes(const std::vector<double> &dashes,
+                                double offset) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_dash, _1, dashes.data(), dashes.size(), offset);
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::tollerance(double _t) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_set_tolerance, _1, _t);
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::op(op_t _op) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func =
+      std::bind(cairo_set_operator, _1, static_cast<cairo_operator_t>(_op));
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::source(Paint &p) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  auto fn = [](cairo_t *cr, Paint &p) { p.emit(cr); };
+  CAIRO_FUNCTION func = std::bind(fn, _1, p);
+  auto item = DL.emplace_back(make_shared<OPTION_FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::arc(double xc, double yc, double radius, double angle1,
+                             double angle2, bool bNegative) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bNegative) {
+    func = std::bind(cairo_arc_negative, _1, xc, yc, radius, angle1, angle2);
+  } else {
+    func = std::bind(cairo_arc, _1, xc, yc, radius, angle1, angle2);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::curve(double x1, double y1, double x2, double y2,
+                               double x3, double y3, bool bRelative) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_curve_to, _1, x1, y1, x2, y2, x3, y3);
+  } else {
+    func = std::bind(cairo_curve_to, _1, x1, y1, x2, y2, x3, y3);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::line(double x, double y, bool bRelative) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_line_to, _1, x, y);
+  } else {
+    func = std::bind(cairo_line_to, _1, x, y);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::stroke(bool bPreserve) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bPreserve) {
+    func = std::bind(cairo_stroke_preserve, _1);
+  } else {
+    func = std::bind(cairo_stroke, _1);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::move(double x, double y, bool bRelative) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func;
+  if (bRelative) {
+    func = std::bind(cairo_rel_move_to, _1, x, y);
+  } else {
+    func = std::bind(cairo_move_to, _1, x, y);
+  }
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/**
+\brief
+*/
+void uxdevice::platform::rectangle(double x, double y, double width,
+                                   double height) {
+  using namespace std::placeholders;
+  DL_SPIN;
+  CAIRO_FUNCTION func = std::bind(cairo_rectangle, _1, x, y, width, height);
+  auto item = DL.emplace_back(make_shared<FUNCTION>(func));
+  item->invoke(context);
+  DL_CLEAR;
+}
+
+/***************************************************************************/
+
+/**
+  \internal
+  \brief the function draws the cursor.
+  */
+void uxdevice::platform::drawCaret(const int x, const int y, const int h) {}
+
+/**
+\brief The function copies the pixel buffer to the screen
+
+*/
+void uxdevice::platform::flip() {
+#if defined(__linux__)
+
+#elif defined(_WIN64)
+  if (!context.pRenderTarget)
+    return;
+
+  context.pRenderTarget->BeginDraw();
+
+  // create offscreen bitmap for pixel rendering
+  D2D1_PIXEL_FORMAT desc2D = D2D1::PixelFormat();
+  desc2D.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  desc2D.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+
+  D2D1_BITMAP_PROPERTIES bmpProperties = D2D1::BitmapProperties();
+  context.pRenderTarget->GetDpi(&bmpProperties.dpiX, &bmpProperties.dpiY);
+  bmpProperties.pixelFormat = desc2D;
+
+  RECT rc;
+  GetClientRect(context.hwnd, &rc);
+
+  D2D1_SIZE_U size = D2D1::SizeU(_w, _h);
+  HRESULT hr = m_pRenderTarget->CreateBitmap(
+      size, context.offscreenBuffer.data(), context.windowWidth * 4,
+      &bmpProperties, &context.pBitmap);
+
+  // render bitmap to screen
+  D2D1_RECT_F rectf;
+  rectf.left = 0;
+  rectf.top = 0;
+  rectf.bottom = _h;
+  rectf.right = _w;
+
+  context.pRenderTarget->DrawBitmap(
+      context.pBitmap, rectf, 1.0f,
+      D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+
+  context.pRenderTarget->EndDraw();
+  context.pBitmap->Release();
+
+#endif
+}
+
+std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
+                         std::string cond, std::string ecode) {
+  std::stringstream ss;
+  ss << sourceFile << "(" << ln << ") " << sfunc << "  " << cond << ecode;
+  return ss.str();
 }

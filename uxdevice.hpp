@@ -1,25 +1,7 @@
-/*
- * This file is part of the PLATFORM_OBJ distribution
- * {https://github.com/amatarazzo777/platform_obj). Copyright (c) 2020 Anthony
- * Matarazzo.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 /**
 \author Anthony Matarazzo
 \file uxdevice.hpp
-\date 9/7/20
+\date 3/26/20
 \version 1.0
 \brief interface for the platform.
 
@@ -32,36 +14,18 @@
 \addtogroup Library Build Options
 \brief Library Options
 \details These options provide the selection to configure selection
-options when compiling the text_color_t.
+options when compiling the source.
 @{
 */
+//#define USE_STACKBLUR
 
-/**
-\internal
-\def DEFAULT_WINDOW_TITLE
-\brief when a window title is not provided, this is used.
+#define USE_SVGREN
 
-*/
-#define DEFAULT_WINDOW_TITLE                                                   \
-  std::string(__FILE__) + std::string("  ") + std::string(__DATE__)
+#define DEFAULT_TEXTFACE "arial"
+#define DEFAULT_TEXTSIZE 12
+#define DEFAULT_TEXTCOLOR 0
 
-/**
-\internal
-\def DEFAULT_TEXTFACE
-\brief default text face
-
-*/
-#define SYSTEM_DEFAULTS                                                        \
-  in(text_render_fast_t{}, text_font_t{"Arial 20px"}, text_color_t{"black"},   \
-     surface_area_brush_t{"white"}, text_indent_t{100.0},                      \
-     text_alignment_t{text_alignment_options_t::left},                         \
-     text_ellipsize_t{text_ellipsize_options_t::off}, text_line_space_t{1.1},  \
-     text_tab_stops_t{                                                         \
-         std::vector<double>{250, 250, 250, 250, 250, 250, 250, 250}},         \
-     surface_area_title_t{DEFAULT_WINDOW_TITLE});
-
-#define USE_STACKBLUR
-
+//#define CLIP_OUTLINE
 /**
 \def USE_DEBUG_CONSOLE
 */
@@ -71,18 +35,17 @@ options when compiling the text_color_t.
 
 #include "uxbase.hpp"
 
-#include "uxcairoimage.hpp"
 #include "uxevent.hpp"
 #include "uxmatrix.hpp"
 #include "uxpaint.hpp"
 
 #include "uxdisplaycontext.hpp"
-#include "uxdisplayunitbase.hpp"
 #include "uxdisplayunits.hpp"
 
-std::string _errorReport(std::string text_color_tFile, int ln,
-                         std::string sfunc, std::string cond,
-                         std::string ecode);
+#include "uxcairoimage.hpp"
+
+std::string _errorReport(std::string sourceFile, int ln, std::string sfunc,
+                         std::string cond, std::string ecode);
 typedef std::function<void(const std::string &err)> errorHandler;
 
 namespace uxdevice {
@@ -104,303 +67,230 @@ public:
 };
 
 /**
-
 \internal
-
-\def UX_DECLARE_STREAM_INTERFACE
-
-\brief the macro creates the stream interface for both constant references
-and shared pointers as well as establishes the prototype for the insertion
-function. The implementation is not standard and will need definition.
-This is the route for formatting objects that accept numerical data and process
-to human readable values. Modern implementations include the processing of size
-information. Yet within the c++ implementation, the data structures that report
-and hold information is elaborate.
-
+\class platform
+\brief The platform contains logic to connect the document object model to the
+local operating system.
 */
-#define UX_DECLARE_STREAM_INTERFACE(CLASS_NAME)                                \
-public:                                                                        \
-  template <> surface_area_t &operator<<(const CLASS_NAME &data) {             \
-    stream_input(data);                                                        \
-    return *this;                                                              \
-  }                                                                            \
-  template <>                                                                  \
-  surface_area_t &operator<<(const std::shared_ptr<CLASS_NAME> data) {         \
-    stream_input(data);                                                        \
-    return *this;                                                              \
-  }                                                                            \
-                                                                               \
-private:                                                                       \
-  surface_area_t &stream_input(const CLASS_NAME &_val);                        \
-  surface_area_t &stream_input(const std::shared_ptr<CLASS_NAME> _val);
 
-/**
-\internal
-
-\def UX_DECLARE_STREAM_IMPLEMENTATION
-
-\brief The macro provides a creation of necessary input stream routines that
-maintains the display lists. These routines are private within the class
-and are activated by the << operator. These are the underlying operations.
-
-*/
-#define UX_DECLARE_STREAM_IMPLEMENTATION(CLASS_NAME)                           \
-public:                                                                        \
-  surface_area_t &operator<<(const CLASS_NAME &data) {                         \
-    display_list<CLASS_NAME>(data);                                            \
-    return *this;                                                              \
-  }                                                                            \
-  surface_area_t &operator<<(const std::shared_ptr<CLASS_NAME> data) {         \
-    display_list<CLASS_NAME>(data);                                            \
-    return *this;                                                              \
-  }
-
-/**
-\typedef coordinate_list_t
-\brief An std::list used to communicate coordinate for the window.
-varying pairs may be given. two or four.
-
-
-*/
-typedef std::list<short int> coordinate_list_t;
-
-/**
-\class surface_area_t
-
-\brief The main interface object of the system.
-
-
-*/
-class surface_area_t {
+class platform {
 public:
-  surface_area_t();
-  surface_area_t(const std::string &surface_area_title);
+  platform(const eventHandler &evtDispatcher, const errorHandler &fn);
+  ~platform();
+  void openWindow(const std::string &sWindowTitle, const unsigned short width,
+                  const unsigned short height,
+                  Paint background = Paint("white"));
+  void surfaceBrush(Paint &b);
+  void closeWindow(void);
+  void backgroundBrush(Paint &p) { context.brush = p; }
+  bool processing(void) { return bProcessing; }
 
-  surface_area_t(const event_handler_t &evtDispatcher);
-  surface_area_t(const coordinate_list_t &coordinate);
-  surface_area_t(const coordinate_list_t &coordinate,
-                 const std::string &window_title,
-                 const painter_brush_t &surface_background_brush,
-                 const event_handler_t &dispatch_events);
+  void startProcessing(void);
 
-  surface_area_t(const coordinate_list_t &coordinate,
-                 const std::string &surface_area_title);
-  surface_area_t(const coordinate_list_t &coordinate,
-                 const std::string &surface_area_title,
-                 const painter_brush_t &background);
-
-  surface_area_t(const coordinate_list_t &coordinate,
-                 const std::string &surface_area_title,
-                 const event_handler_t &evtDispatcher,
-                 const painter_brush_t &background);
-  ~surface_area_t();
-
-  template <typename T> surface_area_t &operator<<(const T &data) {
-    if constexpr (std::is_base_of<display_unit_t, T>::value) {
-      display_list<T>(data);
-    } else {
-      std::ostringstream s;
-      s << data;
-      std::string sData = s.str();
-      stream_input(sData);
-    }
-    return *this;
-  }
-
-  template <typename T>
-  surface_area_t &operator<<(const std::shared_ptr<T> data) {
-    display_list<T>(data);
-    return *this;
-  }
-
-  /*
-   Declare interface only.  uxdevice.cpp contains implementation.
-   These are the stream interface with a function prototype for the invoke().
-   The uxdevice.cpp file contains the implementation.
-
-   surface_area_t &uxdevice::surface_area_t::stream_input(
-    const CLASS_NAME _val)
-
-  */
-
-  UX_DECLARE_STREAM_INTERFACE(std::string)
-  UX_DECLARE_STREAM_INTERFACE(std::stringstream)
-  // UX_DECLARE_STREAM_INTERFACE(char *)
-
-  /* declares the interface and implementation for these
-   objects
-   when these are invoked, the unit_memory class is also updated.
-   When rendering objects are created, text, image or other, these
-   these shared pointers are used as a reference local member initialized
-   at invoke() public member. The parameters and options are validated as well.
-    */
-
-  /**
-  \fn in
-  \tparam T - object to insert using the stream operator.
-  \tparam Args - list of them, param pack expansion calls recursively to
-  operator.
-  */
-  template <typename T> void in(const T &obj) { operator<<(obj); }
-  template <typename T, typename... Args>
-  void in(const T &obj, const Args &... args) {
-    operator<<(obj);
-    in(args...);
-  }
-
-public:
-  template <typename T> T &operator[](const T &o) {
-    std::shared_ptr<T> ptr = {};
-    auto n = mapped_objects.find(o.key);
-    if (n != mapped_objects.end()) {
-      ptr = std::dynamic_pointer_cast<T>(n->second);
-      ptr->changed();
-    }
-    return *ptr;
-  }
-
-  display_unit_t &operator[](const std::string &_val) noexcept {
-    auto n = mapped_objects.find(indirect_index_display_unit_t{_val});
-    n->second->changed();
-    return *n->second;
-  }
-  template <typename T> T &get(const std::string &key) {
-    auto n = mapped_objects.find(indirect_index_display_unit_t{key});
-    n->second->changed();
-    return *std::dynamic_pointer_cast<T>(n->second);
-  }
-
-  // return display unit associated, update
-  std::string &operator[](std::shared_ptr<std::string> _val) noexcept {
-    auto n = mapped_objects.find(reinterpret_cast<std::size_t>(_val.get()));
-    n->second->changed();
-    return *_val;
-  }
-
-  display_unit_t &group(const std::string &sgroupname) {
-    auto n = mapped_objects.find(sgroupname);
-    return *n->second;
-  }
-
-  bool processing(void) { return bProcessing; };
-  surface_area_t &group(std::string &_name);
-
-  surface_area_t &device_offset(double x, double y);
-  surface_area_t &device_scale(double x, double y);
   void clear(void);
-  void notify_complete(void);
+  void notifyComplete(void);
 
-  surface_area_t &save(void);
-  surface_area_t &restore(void);
+  void text(const std::string &s);
+  void text(const std::stringstream &s);
+  void image(const std::string &s);
 
-  surface_area_t &push(content_options_t _content = content_options_t::all);
-  surface_area_t &pop(bool bToSource = false);
+  void pen(const Paint &p);
+  void pen(u_int32_t c);
+  void pen(const std::string &c);
+  void pen(const std::string &c, double w, double h);
+  void pen(double _r, double _g, double _b);
+  void pen(double _r, double _g, double _b, double _a);
+  void pen(double x0, double y0, double x1, double y1, const ColorStops &cs);
+  void pen(double cx0, double cy0, double radius0, double cx1, double cy1,
+           double radius1, const ColorStops &cs);
 
-  surface_area_t &translate(double x, double y);
-  surface_area_t &rotate(double angle);
-  surface_area_t &scale(double x, double y);
-  surface_area_t &transform(const Matrix &mat);
-  surface_area_t &matrix(const Matrix &mat);
-  surface_area_t &identity(void);
-  surface_area_t &device(double &x, double &y);
-  surface_area_t &device_distance(double &x, double &y);
-  surface_area_t &user(double &x, double &y);
-  surface_area_t &user_distance(double &x, double &y);
+  void background(const Paint &p);
+  void background(u_int32_t c);
+  void background(const std::string &c);
+  void background(const std::string &c, double w, double h);
+  void background(double _r, double _g, double _b);
+  void background(double _r, double _g, double _b, double _a);
+  void background(double x0, double y0, double x1, double y1,
+                  const ColorStops &cs);
+  void background(double cx0, double cy0, double radius0, double cx1,
+                  double cy1, double radius1, const ColorStops &cs);
+
+  void textOutline(const Paint &p, double dWidth = 1);
+  void textOutline(u_int32_t c, double dWidth = 1);
+  void textOutline(const std::string &c, double dWidth = 1);
+  void textOutline(const std::string &c, double w, double h, double dWidth = 1);
+  void textOutline(double _r, double _g, double _b, double dWidth = 1);
+  void textOutline(double _r, double _g, double _b, double _a,
+                   double dWidth = 1);
+  void textOutline(double x0, double y0, double x1, double y1,
+                   const ColorStops &cs, double dWidth = 1);
+  void textOutline(double cx0, double cy0, double radius0, double cx1,
+                   double cy1, double radius1, const ColorStops &cs,
+                   double dWidth = 1);
+
+  void textOutlineNone(void);
+
+  void textFill(const Paint &p);
+  void textFill(u_int32_t c);
+  void textFill(const std::string &c);
+  void textFill(const std::string &c, double w, double h);
+  void textFill(double _r, double _g, double _b);
+  void textFill(double _r, double _g, double _b, double _a);
+  void textFill(double x0, double y0, double x1, double y1,
+                const ColorStops &cs);
+  void textFill(double cx0, double cy0, double radius0, double cx1, double cy1,
+                double radius1, const ColorStops &cs);
+
+  void textFillNone(void);
+
+  void textShadow(const Paint &p, int r = 3, double xOffset = 1.0,
+                  double yOffset = 1.0);
+  void textShadow(u_int32_t c, int r = 3, double xOffset = 1.0,
+                  double yOffset = 1.0);
+  void textShadow(const std::string &c, int r = 3, double xOffset = 1.0,
+                  double yOffset = 1.0);
+  void textShadow(const std::string &c, double w, double h, int r,
+                  double xOffset, double yOffset);
+
+  void textShadow(double _r, double _g, double _b, int r = 3,
+                  double xOffset = 1.0, double yOffset = 1.0);
+  void textShadow(double _r, double _g, double _b, double _a, int r = 3,
+                  double xOffset = 1.0, double yOffset = 1.0);
+
+  void textShadow(double x0, double y0, double x1, double y1,
+                  const ColorStops &cs, int r = 3, double xOffset = 1.0,
+                  double yOffset = 1.0);
+  void textShadow(double cx0, double cy0, double radius0, double cx1,
+                  double cy1, double radius1, const ColorStops &cs, int r = 3,
+                  double xOffset = 1.0, double yOffset = 1.0);
+
+  void textShadowNone(void);
+
+  void textAlignment(alignment aln);
+  void indent(double space);
+  double indent(void);
+  void ellipse(ellipsize e);
+  ellipsize ellipse(void);
+  void lineSpace(double dSpace);
+  double lineSpace(void);
+  void tabStops(const std::vector<double> &tabs);
+
+  void font(const std::string &s);
+  void area(double x, double y, double w, double h);
+  void area(double x, double y, double w, double h, double rx, double ry);
+  void area(double cx, double cy, double r) { areaCircle(cx, cy, r); }
+  void areaCircle(double x, double y, double d);
+  void areaEllipse(double cx, double cy, double rx, double ry);
+  void areaLines(std::vector<double> lines);
+  // void areaPath(std::vector<PathStep> path);
+
+  void drawText(void);
+  void drawImage(void);
+  void drawArea(void);
+  void antiAlias(antialias antialias);
+
+  void save(void);
+  void restore(void);
+
+  void push(content _content = content::all);
+  void pop(bool bToSource = false);
+
+  void translate(double x, double y);
+  void rotate(double angle);
+  void scale(double x, double y);
+  void transform(const Matrix &mat);
+  void matrix(const Matrix &mat);
+  void identity(void);
+  void device(double &x, double &y);
+  void deviceDistance(double &x, double &y);
+  void user(double &x, double &y);
+  void userDistance(double &x, double &y);
+
+  void source(Paint &p);
+
+  void cap(lineCap c);
+  void join(lineJoin j);
+  void lineWidth(double dWidth);
+  void miterLimit(double dLimit);
+  void dashes(const std::vector<double> &dashes, double offset);
+  void tollerance(double _t);
+  void op(op_t _op);
+
+  void arc(double xc, double yc, double radius, double angle1, double angle2,
+           bool bNegative = false);
+  void curve(double x1, double y1, double x2, double y2, double x3, double y3,
+             bool bRelative = false);
+
+  void line(double x, double y, bool bRelative = false);
+  void move(double x, double y, bool bRelative = false);
+  void rectangle(double x, double y, double width, double height);
   point location(void);
 
+  void mask(Paint &p);
+  void mask(Paint &p, double x, double y);
+  void paint(double alpha = 1.0);
+  void stroke(bool bPreserve = false);
   bounds stroke(void);
-  bool in_stroke(double x, double y);
-  bool in_fill(double x, double y);
+  bool inStroke(double x, double y);
+  void fill(bool bPreserve = false);
+  bool inFill(double x, double y);
 
   bounds clip(void);
   void clip(bool bPreserve = false);
-  bool in_clip(double x, double y);
+  bool inClip(double x, double y);
 
 private:
-  void start_processing(void);
-  void draw_caret(const int x, const int y, const int h);
-  void message_loop(void);
-  void render_loop(void);
-  void dispatch_event(const event_t &e);
-  void open_window(const coordinate_list_t &coord,
-                   const std::string &sWindowTitle,
-                   const painter_brush_t &background,
-                   const event_handler_t &dispatch_events);
-  void close_window(void);
-  void set_surface_defaults(void);
-  bool relative_coordinate = false;
-  void maintain_index(const std::shared_ptr<display_unit_t> obj);
+  void renderLoop(void);
+  void exposeRegions(void);
+  void dispatchEvent(const event &e);
+  void drawCaret(const int x, const int y, const int h);
+
+  void messageLoop(void);
+
+  void flip(void);
+
+#if defined(__linux__)
+
+#elif defined(_WIN64)
+  static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam,
+                                  LPARAM lParam);
+  bool initializeVideo(void);
+  void terminateVideo(void);
+#endif
 
 private:
-  display_context_t context = display_context_t();
+  DisplayContext context = DisplayContext();
   std::atomic<bool> bProcessing = false;
+  int framesPerSecond = 60;
   errorHandler fnError = nullptr;
-  event_handler_t fnEvents = nullptr;
+  eventHandler fnEvents = nullptr;
 
-  typedef std::list<std::shared_ptr<display_unit_t>> display_unit_list_t;
-  display_unit_list_t display_list_storage = {};
-  display_unit_list_t::iterator itDL_Processed = display_list_storage.begin();
+  typedef std::list<std::shared_ptr<DisplayUnit>> DisplayUnitStorage;
+  DisplayUnitStorage DL = {};
+  DisplayUnitStorage::iterator itDL_Processed = DL.begin();
 
-  /// @brief template function to insert into the display list
-  /// and perform initialization based upon the type. The c++ constexpr
-  /// conditional compiling functionality is used to trim the run time and
-  /// code size.
-  template <class T, typename... Args>
-  std::shared_ptr<T> display_list(const Args &... args) {
-    return display_list<T>(std::make_shared<T>(args...));
-  }
-
-  // interface between client and api rendering threads.
   std::atomic_flag DL_readwrite = ATOMIC_FLAG_INIT;
 
-#define UX_DISPLAY_LIST_SPIN                                                   \
-  while (DL_readwrite.test_and_set(std::memory_order_acquire))
-#define UX_DISPLAY_LIST_CLEAR DL_readwrite.clear(std::memory_order_release)
+#define DL_SPIN while (DL_readwrite.test_and_set(std::memory_order_acquire))
+#define DL_CLEAR DL_readwrite.clear(std::memory_order_release)
 
-  template <class T, typename... Args>
-  std::shared_ptr<T> display_list(const std::shared_ptr<T> ptr,
-                                  const Args &... args) {
-    UX_DISPLAY_LIST_SPIN;
+  std::vector<eventHandler> onfocus = {};
+  std::vector<eventHandler> onblur = {};
+  std::vector<eventHandler> onresize = {};
+  std::vector<eventHandler> onkeydown = {};
+  std::vector<eventHandler> onkeyup = {};
+  std::vector<eventHandler> onkeypress = {};
+  std::vector<eventHandler> onmouseenter = {};
+  std::vector<eventHandler> onmouseleave = {};
+  std::vector<eventHandler> onmousemove = {};
+  std::vector<eventHandler> onmousedown = {};
+  std::vector<eventHandler> onmouseup = {};
+  std::vector<eventHandler> onclick = {};
+  std::vector<eventHandler> ondblclick = {};
+  std::vector<eventHandler> oncontextmenu = {};
+  std::vector<eventHandler> onwheel = {};
 
-    ptr->invoke(context);
-
-    if constexpr (std::is_base_of<drawing_output_t, T>::value)
-      context.add_drawable(std::dynamic_pointer_cast<drawing_output_t>(ptr));
-
-    maintain_index(std::dynamic_pointer_cast<display_unit_t>(ptr));
-
-    UX_DISPLAY_LIST_CLEAR;
-
-    return ptr;
-  }
-
-  void display_list_clear(void) {
-    UX_DISPLAY_LIST_SPIN;
-    display_list_storage.clear();
-    UX_DISPLAY_LIST_CLEAR;
-  }
-
-  std::unordered_map<indirect_index_display_unit_t,
-                     std::shared_ptr<display_unit_t>>
-      mapped_objects = {};
-
-  std::list<event_handler_t> onfocus = {};
-  std::list<event_handler_t> onblur = {};
-  std::list<event_handler_t> onresize = {};
-  std::list<event_handler_t> onkeydown = {};
-  std::list<event_handler_t> onkeyup = {};
-  std::list<event_handler_t> onkeypress = {};
-  std::list<event_handler_t> onmouseenter = {};
-  std::list<event_handler_t> onmouseleave = {};
-  std::list<event_handler_t> onmousemove = {};
-  std::list<event_handler_t> onmousedown = {};
-  std::list<event_handler_t> onmouseup = {};
-  std::list<event_handler_t> onclick = {};
-  std::list<event_handler_t> ondblclick = {};
-  std::list<event_handler_t> oncontextmenu = {};
-  std::list<event_handler_t> onwheel = {};
-
-  std::list<event_handler_t> &get_event_vector(std::type_index evt_type);
-};
+  std::vector<eventHandler> &getEventVector(eventType evtType);
+}; // namespace uxdevice
 
 } // namespace uxdevice
