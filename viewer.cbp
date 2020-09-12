@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="viewer" />
+		<Option pch_mode="2" />
+		<Option compiler="clang" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/viewer" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-fmax-errors=0" />
+				</Compiler>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/viewer" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="0" />
+				<Option compiler="clang" />
+				<Compiler>
+					<Add option="-Os" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-pedantic" />
+			<Add option="-Wall" />
+			<Add option="-std=c++17" />
+			<Add option="-Weffc++" />
+			<Add option="`pkg-config --cflags cairo pango pangocairo librsvg-2.0`" />
+		</Compiler>
+		<Linker>
+			<Add option="-static-libstdc++" />
+			<Add option="`pkg-config --libs  xcb-image cairo pango pangocairo librsvg-2.0`" />
+			<Add option="-lstdc++ -lm -lX11-xcb -lX11 -lxcb-keysyms -lpthread" />
+		</Linker>
+		<Unit filename="main.cpp" />
+		<Unit filename="uxbase.hpp" />
+		<Unit filename="uxcairoimage.cpp" />
+		<Unit filename="uxcairoimage.hpp" />
+		<Unit filename="uxdevice.cpp" />
+		<Unit filename="uxdevice.hpp" />
+		<Unit filename="uxdisplaycontext.cpp" />
+		<Unit filename="uxdisplaycontext.hpp" />
+		<Unit filename="uxdisplayunitbase.cpp" />
+		<Unit filename="uxdisplayunitbase.hpp" />
+		<Unit filename="uxdisplayunits.cpp" />
+		<Unit filename="uxdisplayunits.hpp" />
+		<Unit filename="uxenums.hpp" />
+		<Unit filename="uxevent.hpp" />
+		<Unit filename="uxmacros.hpp" />
+		<Unit filename="uxmatrix.hpp" />
+		<Unit filename="uxpaint.cpp" />
+		<Unit filename="uxpaint.hpp" />
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>

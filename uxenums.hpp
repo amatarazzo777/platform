@@ -1,3 +1,28 @@
+/*
+ * This file is part of the PLATFORM_OBJ distribution
+ * {https://github.com/amatarazzo777/platform_obj). Copyright (c) 2020 Anthony
+ * Matarazzo.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+\author Anthony Matarazzo
+\file uxdisplayunits.hpp
+\date 9/7/20
+\version 1.0
+\brief
+*/
 /**
 \author Anthony Matarazzo
 \file uxenums.hpp
@@ -8,11 +33,11 @@
 */
 #pragma once
 namespace uxdevice {
-enum class antialias {
+enum class antialias_options_t {
   def = CAIRO_ANTIALIAS_DEFAULT,
 
   /* method */
-  none = CAIRO_ANTIALIAS_NONE,
+  off = CAIRO_ANTIALIAS_NONE,
   gray = CAIRO_ANTIALIAS_GRAY,
   subPixel = CAIRO_ANTIALIAS_SUBPIXEL,
 
@@ -22,7 +47,7 @@ enum class antialias {
   best = CAIRO_ANTIALIAS_BEST
 };
 
-enum class filterType {
+enum class filter_options_t {
   fast = CAIRO_FILTER_FAST,
   good = CAIRO_FILTER_GOOD,
   best = CAIRO_FILTER_BEST,
@@ -31,76 +56,71 @@ enum class filterType {
   gaussian = CAIRO_FILTER_GAUSSIAN
 };
 
-enum class extendType {
-  none = CAIRO_EXTEND_NONE,
+enum class extend_options_t {
+  off = CAIRO_EXTEND_NONE,
   repeat = CAIRO_EXTEND_REPEAT,
   reflect = CAIRO_EXTEND_REFLECT,
   pad = CAIRO_EXTEND_PAD
 };
 
-enum class lineCap {
+enum class line_cap_options_t {
   butt = CAIRO_LINE_CAP_BUTT,
   round = CAIRO_LINE_CAP_ROUND,
   square = CAIRO_LINE_CAP_SQUARE
 };
 
-enum class lineJoin {
+enum class line_join_options_t {
   miter = CAIRO_LINE_JOIN_MITER,
   round = CAIRO_LINE_JOIN_ROUND,
   bevel = CAIRO_LINE_JOIN_BEVEL
 };
-using areaType = enum class areaType {
-  none,
-  circle,
-  ellipse,
-  rectangle,
-  roundedRectangle
+
+enum class graphic_operator_options_t {
+  op_clear = CAIRO_OPERATOR_CLEAR,
+  op_source = CAIRO_OPERATOR_SOURCE,
+  op_over = CAIRO_OPERATOR_OVER,
+  op_in = CAIRO_OPERATOR_IN,
+  op_out = CAIRO_OPERATOR_OUT,
+  op_at = CAIRO_OPERATOR_ATOP,
+  op_dest = CAIRO_OPERATOR_DEST,
+  op_dest_over = CAIRO_OPERATOR_DEST_OVER,
+  op_dest_in = CAIRO_OPERATOR_DEST_IN,
+  op_dest_out = CAIRO_OPERATOR_DEST_OUT,
+  op_dest_at = CAIRO_OPERATOR_DEST_ATOP,
+  op_xor = CAIRO_OPERATOR_XOR,
+  op_add = CAIRO_OPERATOR_ADD,
+  op_saturate = CAIRO_OPERATOR_SATURATE,
+  op_multiply = CAIRO_OPERATOR_MULTIPLY,
+  op_screen = CAIRO_OPERATOR_SCREEN,
+  op_overlay = CAIRO_OPERATOR_OVERLAY,
+  op_darken = CAIRO_OPERATOR_DARKEN,
+  op_lighten = CAIRO_OPERATOR_LIGHTEN,
+  op_color_dodge = CAIRO_OPERATOR_COLOR_DODGE,
+  op_color_burn = CAIRO_OPERATOR_COLOR_BURN,
+  op_hard_light = CAIRO_OPERATOR_HARD_LIGHT,
+  op_soft_light = CAIRO_OPERATOR_SOFT_LIGHT,
+  op_difference = CAIRO_OPERATOR_DIFFERENCE,
+  op_exclusion = CAIRO_OPERATOR_EXCLUSION,
+  op_hsl_hue = CAIRO_OPERATOR_HSL_HUE,
+  op_hsl_saturation = CAIRO_OPERATOR_HSL_SATURATION,
+  op_hsl_color = CAIRO_OPERATOR_HSL_COLOR,
+  op_hsl_luminosity = CAIRO_OPERATOR_HSL_LUMINOSITY
 };
 
-enum op_t {
-  opClear = CAIRO_OPERATOR_CLEAR,
-  opSource = CAIRO_OPERATOR_SOURCE,
-  opOver = CAIRO_OPERATOR_OVER,
-  opIn = CAIRO_OPERATOR_IN,
-  opOut = CAIRO_OPERATOR_OUT,
-  opAtop = CAIRO_OPERATOR_ATOP,
-  opDest = CAIRO_OPERATOR_DEST,
-  opDestOver = CAIRO_OPERATOR_DEST_OVER,
-  opDestIn = CAIRO_OPERATOR_DEST_IN,
-  opDestOut = CAIRO_OPERATOR_DEST_OUT,
-  opDestAtop = CAIRO_OPERATOR_DEST_ATOP,
-  opXor = CAIRO_OPERATOR_XOR,
-  opAdd = CAIRO_OPERATOR_ADD,
-  opSaturate = CAIRO_OPERATOR_SATURATE,
-  opMultiply = CAIRO_OPERATOR_MULTIPLY,
-  opScreen = CAIRO_OPERATOR_SCREEN,
-  opOverlay = CAIRO_OPERATOR_OVERLAY,
-  opDarken = CAIRO_OPERATOR_DARKEN,
-  opLighten = CAIRO_OPERATOR_LIGHTEN,
-  opColorDodge = CAIRO_OPERATOR_COLOR_DODGE,
-  opColorBurn = CAIRO_OPERATOR_COLOR_BURN,
-  opHardLight = CAIRO_OPERATOR_HARD_LIGHT,
-  opSoftLight = CAIRO_OPERATOR_SOFT_LIGHT,
-  opDifference = CAIRO_OPERATOR_DIFFERENCE,
-  opExclusion = CAIRO_OPERATOR_EXCLUSION,
-  opHSLHUE = CAIRO_OPERATOR_HSL_HUE,
-  opHSLSaturation = CAIRO_OPERATOR_HSL_SATURATION,
-  opHSLColor = CAIRO_OPERATOR_HSL_COLOR,
-  opHSLLuminosity = CAIRO_OPERATOR_HSL_LUMINOSITY
-};
-enum class alignment {
+enum class text_alignment_options_t {
   left = PangoAlignment::PANGO_ALIGN_LEFT,
   center = PangoAlignment::PANGO_ALIGN_CENTER,
   right = PangoAlignment::PANGO_ALIGN_RIGHT,
   justified = 4
 };
-enum class ellipsize {
-  none = PANGO_ELLIPSIZE_NONE,
+enum class text_ellipsize_options_t {
+  off = PANGO_ELLIPSIZE_NONE,
   start = PANGO_ELLIPSIZE_START,
   middle = PANGO_ELLIPSIZE_MIDDLE,
   end = PANGO_ELLIPSIZE_END
 };
-enum class content {
+
+enum class content_options_t {
   color = CAIRO_CONTENT_COLOR,
   alpha = CAIRO_CONTENT_ALPHA,
   all = CAIRO_CONTENT_COLOR_ALPHA

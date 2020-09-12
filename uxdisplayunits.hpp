@@ -1,514 +1,720 @@
+/*
+ * This file is part of the PLATFORM_OBJ distribution
+ *
+ * (https://github.com/amatarazzo777/platform_obj)
+ *
+ * Copyright (c) 2020 Anthony Matarazzo.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 /**
 \author Anthony Matarazzo
-\file uxworkstate.hpp
-\date 5/12/20
+\file uxdisplayunits.hpp
+\date 9/7/20
 \version 1.0
- \details The class holds the context of parameters for
- any drawing operations that occur. Such as AREA, or STRING.
- These objects have named slot positions within the by
- contextUnit.
-
+\brief The file encapsulates the objects that may be created,
+controlled, and rendered by the system. Attributes. externalized data such
+as std::shared pointers may also be stored. Each object has a hash
+function which is also queried to detect changes. Only on screen related
+objects are included within the set. The intersection test is also included
+as part of a base hierarchy of classes for objects that are declared as such
+(_DRAWING_FUNCTION). display_unit_t is the logical base class.
 
 */
+
 #pragma once
 
+/**
+
+\class coordinate_storage_t
+\brief storage class used by the coordinate_t object.
+
+\details The constructor interface is inherited by objects
+that are display units.
+
+
+ */
 namespace uxdevice {
+class coordinate_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<coordinate_storage_t> {
+public:
+  coordinate_storage_t() {}
+  coordinate_storage_t(double _x, double _y, double _w, double _h)
+      : x(_x), y(_y), w(_w), h(_h) {}
+  coordinate_storage_t(double _x, double _y) : x(_x), y(_y) {}
+  virtual ~coordinate_storage_t() {}
+
+  void invoke(display_context_t &context);
+  void emit(display_context_t &context) { emit(context.cr); }
+  void emit(cairo_t *cr);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, x, y, w, h)
+
+  double x = {};
+  double y = {};
+  double w = {};
+  double h = {};
+
+  friend class coordinate_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::coordinate_storage_t);
 
 /**
-\brief base class for all display units. defaulted
-is the isOutput function. Drawing object should override
-this and return true. This enables the checking of the surface
-for errors after invocation.
+\internal
+\class arc_storage_t
+\brief
 
-*/
-class DisplayUnit {
+\details
+
+
+ */
+namespace uxdevice {
+class arc_storage_t : public polymorphic_overloads_t,
+                      public std::enable_shared_from_this<arc_storage_t> {
 public:
-  DisplayUnit() {}
-  virtual ~DisplayUnit() {}
-  DisplayUnit &operator=(const DisplayUnit &other) {
-    bprocessed = other.bprocessed;
-    viewportInked = other.viewportInked;
-    _serror = other._serror;
-    return *this;
-  }
-  DisplayUnit(const DisplayUnit &other) { *this = other; }
-  virtual void invoke(DisplayContext &context) {}
-  virtual bool isOutput(void) { return false; }
-  void error(const char *s) { _serror = s; }
-  bool valid(void) { return _serror == nullptr; }
-  bool isprocessed(void) { return bprocessed; }
+  arc_storage_t() {}
+  arc_storage_t(double _xc, double _yc, double _radius, double _angle1,
+                double _angle2)
+      : xc(_xc), yc(_yc), radius(_radius), angle1(_angle1), angle2(_angle2) {}
+  virtual ~arc_storage_t() {}
 
-  bool bprocessed = false;
-  bool viewportInked = false;
-  const char *_serror = nullptr;
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, xc, yc, radius, angle1, angle2)
+
+  double xc = {};
+  double yc = {};
+  double radius = {};
+  double angle1 = {};
+  double angle2 = {};
+  friend class arc_t;
 };
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::arc_storage_t);
 
 /**
-\brief base class for objects that produce image drawing commands
-The isOutput is overridden to return true. As well the object uses
-the render work list to determine if a particular image is on screen.
+\internal
+\class negative_arc_storage_t
+\brief
 
-*/
+\details
 
-class DrawingOutput : public DisplayUnit {
+
+ */
+namespace uxdevice {
+struct negative_arc_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<arc_storage_t> {
 public:
-  typedef DisplayContext::CairoRegion CairoRegion;
-  DrawingOutput(){};
-  ~DrawingOutput() {
-    if (oncethread)
-      oncethread.reset();
+  negative_arc_storage_t() {}
+  negative_arc_storage_t(double _xc, double _yc, double _radius, double _angle1,
+                         double _angle2)
+      : xc(_xc), yc(_yc), radius(_radius), angle1(_angle1), angle2(_angle2) {}
+  virtual ~negative_arc_storage_t() {}
 
-    DisplayContext::destroyBuffer(_buf);
-  }
-  DrawingOutput &operator=(const DrawingOutput &other) {
-    if (other._buf.rendered)
-      _buf.rendered = cairo_surface_reference(other._buf.rendered);
+  void invoke(display_context_t &context);
 
-    if (other._buf.cr)
-      _buf.cr = cairo_reference(other._buf.cr);
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, xc, yc, radius, angle1, angle2)
 
-    fnDraw = other.fnDraw;
-    fnDrawClipped = other.fnDrawClipped;
-    fnCacheSurface = other.fnCacheSurface;
-    fnBaseSurface = other.fnBaseSurface;
+  double xc = {};
+  double yc = {};
+  double radius = {};
+  double angle1 = {};
+  double angle2 = {};
 
-    std::copy(other.options.begin(), other.options.end(),
-              std::back_inserter(options));
-    _inkRectangle = other._inkRectangle;
-    intersection = other.intersection;
-    _intersection = other._intersection;
+  friend class arc_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::negative_arc_storage_t);
 
+/**
+\internal
+\class rectangle_storage_t
+\brief
+
+\details
+
+
+ */
+namespace uxdevice {
+class rectangle_storage_t : public polymorphic_overloads_t,
+                            public std::enable_shared_from_this<arc_storage_t> {
+public:
+  rectangle_storage_t() {}
+  rectangle_storage_t(double _x, double _y, double _width, double _height)
+      : x(_x), y(_y), width(_width), height(_height) {}
+  virtual ~rectangle_storage_t() {}
+
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, x, y, width, height)
+
+  double x = {};
+  double y = {};
+  double width = {};
+  double height = {};
+  friend class rectangle_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::rectangle_storage_t);
+
+/**
+\internal
+\class curve_storage_t
+\brief
+
+\details
+
+
+ */
+namespace uxdevice {
+class curve_storage_t : public polymorphic_overloads_t,
+                        public std::enable_shared_from_this<arc_storage_t> {
+public:
+  curve_storage_t() {}
+  curve_storage_t(double _x1, double _y1, double _x2, double _y2, double _x3,
+                  double _y3)
+      : x1(_x1), y1(_y1), x2(_x2), y2(_y2), x3(_x3), y3(_y3) {}
+  virtual ~curve_storage_t() {}
+
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, x1, y1, x2, y2, x3, y3)
+
+  double x1 = {};
+  double y1 = {};
+  double x2 = {};
+  double y2 = {};
+  double x3 = {};
+  double y3 = {};
+  friend class curve_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::curve_storage_t);
+
+/**
+\internal
+\class line_storage_t
+\brief
+
+\details
+
+
+ */
+namespace uxdevice {
+class line_storage_t : public polymorphic_overloads_t,
+                       public std::enable_shared_from_this<arc_storage_t> {
+public:
+  line_storage_t() {}
+  line_storage_t(double _x, double _y) : x(_x), y(_y) {}
+  virtual ~line_storage_t() {}
+
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, x, y)
+
+  double x = {};
+  double y = {};
+  friend class line_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::line_storage_t);
+
+/**
+\internal
+\class stroke_fill_path_storage_t
+\brief
+
+\details
+
+
+ */
+namespace uxdevice {
+struct stroke_fill_path_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<arc_storage_t> {
+  painter_brush_t fill_brush = {};
+  painter_brush_t stroke_brush = {};
+
+  stroke_fill_path_storage_t() {}
+
+  stroke_fill_path_storage_t(const painter_brush_t &f, const painter_brush_t &s)
+      : fill_brush(f), stroke_brush(s) {}
+  virtual ~stroke_fill_path_storage_t() {}
+
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, fill_brush.hash_code(),
+                         stroke_brush.hash_code())
+  friend class stroke_fill_path_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::stroke_fill_path_storage_t);
+
+/**
+
+\typedef line_dash_storage_t
+\brief storage alias for the line dashes array. needed for registering the
+hashing function.
+
+\details
+
+
+ */
+namespace uxdevice {
+class line_dash_storage_t : public polymorphic_overloads_t,
+                            public std::enable_shared_from_this<arc_storage_t> {
+public:
+  line_dash_storage_t() {}
+  line_dash_storage_t(const std::vector<double> &_value, const double &_offset)
+      : value(_value), offset(_offset) {}
+
+  virtual ~line_dash_storage_t() {}
+
+  void invoke(display_context_t &context);
+  void emit(display_context_t &context) { emit(context.cr); }
+  void emit(cairo_t *cr);
+
+  std::vector<double> value = {};
+  double offset = {};
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, UX_HASH_VECTOR_OBJECTS(value),
+                         offset)
+  friend class line_dash_t;
+};
+} // namespace uxdevice
+
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::line_dash_storage_t);
+
+/**
+
+\class image_block_storage_t
+\brief storage class used by the image_block_t object. The oject is
+responsible for encapsulating and dynamically allocating, and releasing
+memory.
+
+\details
+
+
+ */
+namespace uxdevice {
+class image_block_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<arc_storage_t> {
+public:
+  /// @brief default constructor
+  image_block_storage_t()
+      : description{}, image_block_ptr{}, is_SVG{}, is_loaded{}, coordinate{} {}
+
+  image_block_storage_t(const std::string &image_description)
+      : description(image_description) {}
+
+  /// @brief move assignment
+  image_block_storage_t &operator=(image_block_storage_t &&other) noexcept {
+    image_block_ptr = std::move(other.image_block_ptr);
+    is_SVG = other.is_SVG;
+    is_loaded = other.is_loaded;
+    coordinate = std::move(other.coordinate);
     return *this;
   }
-  DrawingOutput(const DrawingOutput &other) { *this = other; }
 
-  bool hasInkExtents = false;
-  cairo_rectangle_int_t inkRectangle = cairo_rectangle_int_t();
-  cairo_region_overlap_t overlap = CAIRO_REGION_OVERLAP_OUT;
-  void intersect(cairo_rectangle_t &r);
-  void intersect(CairoRegion &r);
-
-  cairo_rectangle_t *inkExtents(void) { return &_inkRectangle; }
-  cairo_rectangle_t *intersectionExtents(void) { return &_intersection; }
-  void invoke(cairo_t *cr);
-  void invoke(DisplayContext &context) {}
-  bool isOutput(void) { return true; }
-  std::atomic<bool> bRenderBufferCached = false;
-  DRAWBUFFER _buf = {};
-
-  // These functions switch the rendering apparatus from off
-  // screen threaded to on screen. all rendering is serialize to the main
-  // surface
-  //
-  std::atomic_flag lockFunctors = ATOMIC_FLAG_INIT;
-#define LOCK_FUNCTORS_SPIN                                                     \
-  while (lockFunctors.test_and_set(std::memory_order_acquire))
-
-#define LOCK_FUNCTORS_CLEAR lockFunctors.clear(std::memory_order_release)
-
-  void functorsLock(bool b) {
-    if (b)
-      LOCK_FUNCTORS_SPIN;
-    else
-      LOCK_FUNCTORS_CLEAR;
-  }
-
-  DrawLogic fnCacheSurface = DrawLogic();
-  DrawLogic fnBaseSurface = DrawLogic();
-  DrawLogic fnDraw = DrawLogic();
-  DrawLogic fnDrawClipped = DrawLogic();
-
-  // measure processing time
-  std::chrono::system_clock::time_point lastRenderTime = {};
-  void evaluateCache(DisplayContext &context);
-  bool bFirstTimeRendered = true;
-  std::unique_ptr<std::thread> oncethread = nullptr;
-  CairoOptionFn options = {};
-  cairo_rectangle_t _inkRectangle = cairo_rectangle_t();
-  cairo_rectangle_int_t intersection = cairo_rectangle_int_t();
-  cairo_rectangle_t _intersection = cairo_rectangle_t();
-};
-
-typedef std::function<void(void)> CLEAR_FUNCTION;
-
-class CLEARUNIT : public DisplayUnit {
-public:
-  CLEARUNIT(CLEAR_FUNCTION _fn) : fn(_fn) {}
-
-  CLEARUNIT &operator=(const CLEARUNIT &other) {
-    fn = other.fn;
+  /// @brief copy assignment operator
+  image_block_storage_t &operator=(const image_block_storage_t &other) {
+    image_block_ptr = cairo_surface_reference(other.image_block_ptr);
+    is_SVG = other.is_SVG;
+    is_loaded = other.is_loaded;
+    coordinate = other.coordinate;
     return *this;
   }
-  CLEARUNIT(const CLEARUNIT &other) { *this = other; }
-  void invoke(DisplayContext &context) {
-    fn();
-    bprocessed = true;
+
+  /// @brief move constructor
+  image_block_storage_t(image_block_storage_t &&other) noexcept
+      : image_block_ptr(std::move(other.image_block_ptr)),
+        is_SVG(std::move(other.is_SVG)), is_loaded(std::move(other.is_loaded)),
+        coordinate(std::move(other.coordinate)) {}
+
+  /// @brief copy constructor
+  image_block_storage_t(const image_block_storage_t &other)
+      : image_block_ptr(cairo_surface_reference(other.image_block_ptr)),
+        is_SVG(other.is_SVG), is_loaded(other.is_loaded),
+        coordinate(other.coordinate) {}
+
+  virtual ~image_block_storage_t() {
+    if (image_block_ptr)
+      cairo_surface_destroy(image_block_ptr);
   }
-  CLEAR_FUNCTION fn = {};
+
+  void invoke(display_context_t &context);
+  void emit(display_context_t &context) { emit(context.cr); }
+  void emit(cairo_t *cr);
+
+  void is_valid(void);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, description, is_SVG, is_loaded,
+                         coordinate)
+
+  std::string description = {};
+  cairo_surface_t *image_block_ptr = {};
+  bool is_SVG = {};
+  bool is_loaded = {};
+  std::shared_ptr<coordinate_t> coordinate = {};
+  friend class image_block_t;
 };
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::image_block_storage_t);
 
-class ANTIALIAS : public DisplayUnit {
+/**
+\internal
+\class text_font_data_storage
+\brief
+
+\details
+
+
+ */
+
+namespace uxdevice {
+class text_font_storage_t : public polymorphic_overloads_t,
+                            public std::enable_shared_from_this<arc_storage_t> {
 public:
-  ANTIALIAS(antialias _antialias)
-      : setting(static_cast<cairo_antialias_t>(_antialias)) {}
+  // these become public members of the base class.
+  text_font_storage_t() : description{}, font_ptr(nullptr) {}
+  text_font_storage_t(const std::string &_description)
+      : description(_description), font_ptr(nullptr) {}
 
-  void invoke(DisplayContext &context) {
-    cairo_set_antialias(context.cr, setting);
-    bprocessed = true;
+  virtual ~text_font_storage_t() {
+    if (font_ptr)
+      pango_font_description_free(font_ptr);
   }
 
-  cairo_antialias_t setting;
-};
-
-class AREA : public DisplayUnit {
-public:
-  AREA(void) {}
-  AREA(double _cx, double _cy, double _r)
-      : x(_cx), y(_cy), w(_r), h(_r), rx(_r), type(areaType::circle) {}
-  AREA(areaType _type, double _x, double _y, double p3, double p4)
-      : x(_x), y(_y), type(_type) {
-    if (type == areaType::rectangle) {
-      w = p3;
-      h = p4;
-    } else {
-      rx = p3;
-      ry = p4;
-    }
+  text_font_storage_t &operator=(const text_font_storage_t &&other) {
+    description = other.description;
+    return *this;
   }
-  AREA(double _x, double _y, double _w, double _h, double _rx, double _ry)
-      : x(_x), y(_y), w(_w), h(_h), rx(_rx), ry(_ry),
-        type(areaType::roundedRectangle) {}
-  ~AREA() {}
-  AREA(const AREA &other) { *this = other; };
-  void shrink(double dWidth);
-  double x = 0.0, y = 0.0, w = 0.0, h = 0.0, rx = -1, ry = -1;
-  areaType type = areaType::none;
-
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
-
-class STRING : public DisplayUnit {
-public:
-  STRING(const std::string &s) : data(s) {}
-  ~STRING() {}
-  std::string data;
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
-
-class FONT : public DisplayUnit {
-public:
-  FONT(const std::string &s)
-      : description(s), pointSize(DEFAULT_TEXTSIZE), bProvidedName(false),
-        bProvidedSize(false), bProvidedDescription(true) {}
-  FONT(const std::string &s, const double &pt)
-      : description(s), pointSize(pt) {}
-
-  FONT &operator=(const FONT &other) = delete;
-  FONT(const FONT &);
-
-  ~FONT() {
-    if (fontDescription)
-      pango_font_description_free(fontDescription);
+  text_font_storage_t &operator=(const text_font_storage_t &other) {
+    description = other.description;
+    return *this;
   }
-  std::string description = DEFAULT_TEXTFACE;
-  double pointSize = DEFAULT_TEXTSIZE;
-  bool bProvidedName = false;
-  bool bProvidedSize = false;
-  bool bProvidedDescription = false;
-  std::atomic<PangoFontDescription *>fontDescription = nullptr;
-  void invoke(DisplayContext &context) {
-    if (!fontDescription) {
-      fontDescription = pango_font_description_from_string(description.data());
-      if (!fontDescription) {
-        std::string s = "Font could not be loaded from description. ( ";
-        s += description + ")";
-        context.errorState(__func__, __LINE__, __FILE__, std::string_view(s));
-      }
-    }
-    bprocessed = true;
+
+  text_font_storage_t &operator=(const std::string &_desc) {
+    description = _desc;
+    return *this;
   }
-};
 
-class PEN : public DisplayUnit, public Paint {
-public:
-  PEN(const Paint &c) : Paint(c) {}
-  PEN(u_int32_t c) : Paint(c) {}
-  PEN(double _r, double _g, double _b) : Paint(_r, _g, _b) {}
-  PEN(double _r, double _g, double _b, double _a) : Paint(_r, _g, _b, _a) {}
-  PEN(const std::string &n) : Paint(n) {}
-  PEN(const std::string &n, double w, double h) : Paint(n, w, h) {}
-  PEN(double x0, double y0, double x1, double y1, const ColorStops &cs)
-      : Paint(x0, y0, x1, y1, cs) {}
-  PEN(double cx0, double cy0, double radius0, double cx1, double cy1,
-      double radius1, const ColorStops &cs)
-      : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
-  ~PEN() {}
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
+  /// @brief move assignment
+  text_font_storage_t &operator=(const std::string &&_desc) noexcept {
+    description = _desc;
+    return *this;
+  }
 
-class BACKGROUND : public DisplayUnit, public Paint {
-public:
-  BACKGROUND(const Paint &c) : Paint(c) {}
-  BACKGROUND(u_int32_t c) : Paint(c) {}
-  BACKGROUND(double _r, double _g, double _b) : Paint(_r, _g, _b) {}
-  BACKGROUND(double _r, double _g, double _b, double _a)
-      : Paint(_r, _g, _b, _a) {}
-  BACKGROUND(const std::string &n) : Paint(n) {}
-  BACKGROUND(const std::string &n, double w, double h) : Paint(n, w, h) {}
-  BACKGROUND(double x0, double y0, double x1, double y1, const ColorStops &cs)
-      : Paint(x0, y0, x1, y1, cs) {}
-  BACKGROUND(double cx0, double cy0, double radius0, double cx1, double cy1,
-             double radius1, const ColorStops &cs)
-      : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
-  ~BACKGROUND() {}
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
-
-class ALIGN : public DisplayUnit {
-public:
-  ALIGN(alignment _aln) : setting(_aln) {}
-  ~ALIGN() {}
+  void invoke(display_context_t &context);
   void emit(PangoLayout *layout);
-  alignment setting = alignment::left;
-  void invoke(DisplayContext &context) { bprocessed = true; }
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, description)
+
+  std::string description = {};
+  PangoFontDescription *font_ptr = {};
+
+  friend class text_font_t;
 };
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::text_font_storage_t);
 
-class EVENT : public DisplayUnit {
+/**
+
+\class textual_render_storage_t
+\brief class used to store parameters and options for a textual render. The
+object is created as the side effect of inserting text, char *, std string or
+a std::shared_ptr<std::string>.
+*/
+namespace uxdevice {
+class textual_render_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<arc_storage_t> {
 public:
-  EVENT(eventHandler _eh) : fn(_eh){};
-  ~EVENT() {}
-  eventHandler fn;
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
+  typedef std::function<void(cairo_t *cr, coordinate_t &a)>
+      internal_cairo_function_t;
+  textual_render_storage_t() {}
 
-class TEXTSHADOW : public DisplayUnit, public Paint {
-public:
-  TEXTSHADOW(const Paint &c, int r, double xOffset, double yOffset)
-      : Paint(c), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(u_int32_t c, int r, double xOffset, double yOffset)
-      : Paint(c), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(double _r, double _g, double _b, int r, double xOffset,
-             double yOffset)
-      : Paint(_r, _g, _b), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(double _r, double _g, double _b, double _a, int r, double xOffset,
-             double yOffset)
-      : Paint(_r, _g, _b, _a), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(const std::string &n, int r, double xOffset, double yOffset)
-      : Paint(n), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(const std::string &n, double w, double h, int r, double xOffset,
-             double yOffset)
-      : Paint(n, w, h), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(double x0, double y0, double x1, double y1, const ColorStops &cs,
-             int r, double xOffset, double yOffset)
-      : Paint(x0, y0, x1, y1, cs), radius(r), x(xOffset), y(yOffset) {}
-  TEXTSHADOW(double cx0, double cy0, double radius0, double cx1, double cy1,
-             double radius1, const ColorStops &cs, int r, double xOffset,
-             double yOffset)
-      : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs), radius(r), x(xOffset),
-        y(yOffset) {}
+  virtual ~textual_render_storage_t() {
+    if (shadow_image)
+      cairo_surface_destroy(shadow_image);
 
-  ~TEXTSHADOW() {}
-  void invoke(DisplayContext &context) { bprocessed = true; }
-
-public:
-  unsigned short radius = 3;
-  double x = 1, y = 1;
-};
-
-class TEXTOUTLINE : public Paint, public DisplayUnit {
-public:
-  TEXTOUTLINE(const Paint &c, double _lineWidth)
-      : Paint(c), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(u_int32_t c, double _lineWidth)
-      : Paint(c), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(double _r, double _g, double _b, double _lineWidth)
-      : Paint(_r, _g, _b), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(double _r, double _g, double _b, double _a, double _lineWidth)
-      : Paint(_r, _g, _b, _a), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(const std::string &n, double _lineWidth)
-      : Paint(n), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(const std::string &n, double w, double h, double _lineWidth)
-      : Paint(n, w, h), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(double x0, double y0, double x1, double y1, const ColorStops &cs,
-              double _lineWidth)
-      : Paint(x0, y0, x1, y1, cs), lineWidth(_lineWidth) {}
-  TEXTOUTLINE(double cx0, double cy0, double radius0, double cx1, double cy1,
-              double radius1, const ColorStops &cs, double _lineWidth)
-      : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs), lineWidth(_lineWidth) {
-  }
-  void emit(cairo_t *cr) {
-    Paint::emit(cr);
-    cairo_set_line_width(cr, lineWidth);
-  }
-  void emit(cairo_t *cr, double x, double y, double w, double h) {
-    Paint::emit(cr);
-    cairo_set_line_width(cr, lineWidth);
-  }
-
-  void invoke(DisplayContext &context) { bprocessed = true; }
-
-public:
-  double lineWidth = .5;
-};
-
-class TEXTFILL : public Paint, public DisplayUnit {
-public:
-  TEXTFILL(const Paint &c) : Paint(c) {}
-  TEXTFILL(u_int32_t c) : Paint(c) {}
-  TEXTFILL(double _r, double _g, double _b) : Paint(_r, _g, _b) {}
-  TEXTFILL(double _r, double _g, double _b, double _a)
-      : Paint(_r, _g, _b, _a) {}
-  TEXTFILL(const std::string &n) : Paint(n) {}
-  TEXTFILL(const std::string &n, double w, double h) : Paint(n, w, h) {}
-  TEXTFILL(double x0, double y0, double x1, double y1, const ColorStops &cs)
-      : Paint(x0, y0, x1, y1, cs) {}
-  TEXTFILL(double cx0, double cy0, double radius0, double cx1, double cy1,
-           double radius1, const ColorStops &cs)
-      : Paint(cx0, cy0, radius0, cx1, cy1, radius1, cs) {}
-
-  ~TEXTFILL() {}
-  void invoke(DisplayContext &context) { bprocessed = true; }
-};
-
-class IMAGE : public DisplayUnit {
-public:
-  IMAGE(const std::string &data) : _data(data) {}
-  IMAGE(const IMAGE &other) { *this = other; }
-  IMAGE &operator=(const IMAGE &other) {
-    _image = cairo_surface_reference(other._image);
-    return *this;
-  }
-  ~IMAGE() {
-    removethread();
-    if (_image)
-      cairo_surface_destroy(_image);
-  }
-
-  void removethread(void) {
-    if (loadthread.get()) {
-      if (loadthread.get()->joinable()) {
-        loadthread.get()->join();
-      }
-      loadthread.reset();
-    }
-  }
-  void invoke(DisplayContext &context);
-  std::atomic<cairo_surface_t *>_image = nullptr;
-  std::unique_ptr<std::thread> loadthread = nullptr;
-  std::shared_ptr<AREA> area = nullptr;
-  std::string _data = "";
-  bool bIsSVG = false;
-  std::atomic<bool> bLoaded = false;
-};
-class DRAWTEXT : public DrawingOutput {
-public:
-  DRAWTEXT(void) : beginIndex(0), endIndex(0), bEntire(true) {}
-  DRAWTEXT(std::size_t _b, std::size_t _e)
-      : beginIndex(_b), endIndex(_e), bEntire(false) {}
-  DRAWTEXT(const DRAWTEXT &other) = delete;
-  DRAWTEXT &operator=(const DRAWTEXT &other) = delete;
-  bool isOutput(void) { return true; }
-  ~DRAWTEXT() {
-    if (shadowImage)
-      cairo_surface_destroy(shadowImage);
-
-    if (shadowCr)
-      cairo_destroy(shadowCr);
+    if (shadow_cr)
+      cairo_destroy(shadow_cr);
 
     if (layout)
       g_object_unref(layout);
   }
-  bool setLayoutOptions(cairo_t *cr);
-  void drawShadow(cairo_t *cr);
-  void createShadow(void);
 
-  std::size_t beginIndex = 0;
-  std::size_t endIndex = 0;
-  bool bEntire = true;
-  std::atomic<cairo_surface_t *>shadowImage = nullptr;
-  std::atomic<cairo_t *>shadowCr = nullptr;
-  std::atomic<PangoLayout *>layout = nullptr;
+  void invoke(display_context_t &context);
+  void emit(PangoLayout *layout);
+
+  UX_DECLARE_TYPE_INDEX_MEMORY(rendering_parameter)
+
+  UX_DECLARE_HASH_MEMBERS_INTERFACE
+
+  cairo_surface_t *shadow_image = nullptr;
+  cairo_t *shadow_cr = nullptr;
+  PangoLayout *layout = nullptr;
   PangoRectangle ink_rect = PangoRectangle();
   PangoRectangle logical_rect = PangoRectangle();
-
-  // local parameter pointers
-  std::shared_ptr<PEN> pen = nullptr;
-  std::shared_ptr<TEXTOUTLINE> textoutline = nullptr;
-  std::shared_ptr<TEXTFILL> textfill = nullptr;
-  std::shared_ptr<TEXTSHADOW> textshadow = nullptr;
-  std::shared_ptr<AREA> area = nullptr;
-  std::shared_ptr<STRING> text = nullptr;
-  std::shared_ptr<FONT> font = nullptr;
-  std::shared_ptr<ALIGN> align = nullptr;
-
-  void invoke(DisplayContext &context);
-};
-
-class DRAWIMAGE : public DrawingOutput {
-public:
-  DRAWIMAGE(const AREA &a) : src(a) { bEntire = false; }
-  DRAWIMAGE(void) {}
-  ~DRAWIMAGE() {  }
-  DRAWIMAGE(const DRAWIMAGE &other) { *this = other; }
-  DRAWIMAGE &operator=(const DRAWIMAGE &other) {
-    area = other.area;
-    image = other.image;
-    return *this;
-  }
-
-  void invoke(DisplayContext &context);
+  Matrix matrix = {};
+  friend class textual_render_t;
 
 private:
-  AREA src = AREA();
-  std::shared_ptr<AREA> area = nullptr;
-  std::shared_ptr<IMAGE> image = nullptr;
-
-  bool bEntire = true;
-};
-
-class DRAWAREA : public DrawingOutput {
-public:
-  DRAWAREA() {}
-  ~DRAWAREA() {}
-  DRAWAREA(const DRAWAREA &other) { *this = other; }
-  DRAWAREA &operator=(const DRAWAREA &other) {
-    area = other.area;
-    background = other.background;
-    pen = other.pen;
-    return *this;
-  }
-
-  void invoke(DisplayContext &context);
-  std::shared_ptr<AREA> area = nullptr;
-  std::shared_ptr<BACKGROUND> background = nullptr;
-  std::shared_ptr<PEN> pen = nullptr;
-};
-
-/**
-\internal
-\brief call previously bound function with the cairo context.
-*/
-typedef std::function<void(cairo_t *cr)> CAIRO_FUNCTION;
-class FUNCTION : public DisplayUnit {
-public:
-  FUNCTION(CAIRO_FUNCTION _func) : func(_func) {}
-  ~FUNCTION() {}
-  void invoke(DisplayContext &context) {
-    bprocessed = true;
-    func(context.cr);
-  }
-
-private:
-  CAIRO_FUNCTION func;
-};
-
-typedef std::function<void(cairo_t *cr)> CAIRO_OPTION;
-class OPTION_FUNCTION : public DisplayUnit {
-public:
-  OPTION_FUNCTION(CAIRO_OPTION _func) : fnOption(_func) {}
-  ~OPTION_FUNCTION() {}
-  void invoke(DisplayContext &context);
-
-  CAIRO_OPTION fnOption;
+  bool set_layout_options(cairo_t *cr);
+  void create_shadow(void);
+  internal_cairo_function_t precise_rendering_function(void);
 };
 } // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::textual_render_storage_t);
+
+/**
+
+\class text_tab_stops_storage_t
+\brief sets the tab stops on the layout
+*/
+
+namespace uxdevice {
+class text_tab_stops_storage_t
+    : public polymorphic_overloads_t,
+      public std::enable_shared_from_this<arc_storage_t> {
+public:
+  text_tab_stops_storage_t() {}
+  text_tab_stops_storage_t(const std::vector<double> &_value) : value(_value) {}
+  virtual ~text_tab_stops_storage_t() {}
+
+  void invoke(display_context_t &context);
+  void emit(PangoLayout *layout);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, UX_HASH_VECTOR_OBJECTS(value))
+
+  std::vector<double> value = {};
+  friend class text_tab_stops_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::text_tab_stops_storage_t);
+
+/**
+
+\class listener_storage_t
+\brief class used to store members of a listener event. This is the base class
+storage. Listeners inherit from listener_t  as a base.
+*/
+namespace uxdevice {
+class listener_storage_t : public polymorphic_overloads_t,
+                           public std::enable_shared_from_this<arc_storage_t> {
+public:
+  listener_storage_t() {}
+  listener_storage_t(const std::type_index &_ti, const event_handler_t &_evt)
+      : type(_ti), dispatch_event(_evt) {}
+
+  /// @brief move constructor
+  listener_storage_t(listener_storage_t &&other) noexcept
+      : type(other.type), dispatch_event(other.dispatch_event) {}
+
+  /// @brief copy constructor
+  listener_storage_t(const listener_storage_t &other)
+      : type(other.type), dispatch_event(other.dispatch_event) {}
+  virtual ~listener_storage_t() {}
+
+  std::type_index type = std::type_index(typeid(this));
+  event_handler_t dispatch_event = {};
+
+  // apply overrides
+  void invoke(display_context_t &context);
+
+  UX_HASH_OBJECT_MEMBERS(UX_HASH_TYPE_ID_THIS, type, dispatch_event ? 1 : 0)
+  friend class listener_t;
+};
+} // namespace uxdevice
+UX_REGISTER_STD_HASH_SPECIALIZATION(uxdevice::listener_storage_t);
+
+/**
+The following is is the exact name that appears within the API. These macros
+provide expansion to create objects that have invoke and emit methods. The base
+services for these objects to be functional for the display are also provided.
+These objects have all of the move and copy operators implemented.
+There are several types of objects.
+
+*/
+UX_DECLARE_PAINTER_BRUSH(surface_area_brush_t)
+
+UX_DECLARE_CLASS_STORAGE_EMITTER(
+    text_font_t, text_font_storage_t,
+    using text_font_storage_t::text_font_storage_t;)
+
+UX_DECLARE_STORAGE_EMITTER(surface_area_title_t, std::string,
+                           void invoke(display_context_t &context);
+                           void emit(display_context_t &context);)
+
+UX_DECLARE_MARKER(text_render_fast_t, void invoke(display_context_t &context);)
+
+UX_DECLARE_MARKER(text_render_path_t, void invoke(display_context_t &context);)
+
+UX_DECLARE_PAINTER_BRUSH(text_color_t)
+UX_DECLARE_PAINTER_BRUSH(text_outline_t)
+UX_DECLARE_PAINTER_BRUSH(text_fill_t)
+UX_DECLARE_PAINTER_BRUSH(text_shadow_t)
+
+UX_DECLARE_STORAGE_EMITTER(text_alignment_t, text_alignment_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+UX_DECLARE_STORAGE_EMITTER(text_indent_t, double,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+UX_DECLARE_STORAGE_EMITTER(text_ellipsize_t, text_ellipsize_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+UX_DECLARE_STORAGE_EMITTER(text_line_space_t, double,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+UX_DECLARE_STORAGE_EMITTER(text_tab_stops_t, text_tab_stops_storage_t,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+UX_DECLARE_STORAGE_EMITTER(text_data_t, std::string,
+                           void invoke(display_context_t &context);
+                           void emit(PangoLayout *layout);)
+
+// image drawing and other block operations
+UX_DECLARE_CLASS_STORAGE_EMITTER(
+    coordinate_t, coordinate_storage_t,
+    using coordinate_storage_t::coordinate_storage_t;)
+
+UX_DECLARE_STORAGE_EMITTER(antialias_t, antialias_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(line_width_t, double,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(line_cap_t, line_cap_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(line_join_t, line_join_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(miter_limit_t, double,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(line_dashes_t, line_dash_storage_t,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(tollerance_t, double,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_STORAGE_EMITTER(graphic_operator_t, graphic_operator_options_t,
+                           void invoke(display_context_t &context);
+                           void emit(cairo_t *cr);)
+
+UX_DECLARE_MARKER(relative_coordinate_t,
+                  void invoke(display_context_t &context);)
+
+UX_DECLARE_MARKER(absolute_coordinate_t,
+                  void invoke(display_context_t &context);)
+
+UX_DECLARE_STORAGE_EMITTER(function_object_t, cairo_function_t,
+                           void invoke(display_context_t &context);)
+
+UX_DECLARE_CLASS_STORAGE_EMITTER(
+    option_function_object_t, cairo_option_function_t,
+    using cairo_option_function_t::cairo_option_function_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    textual_render_t, textual_render_storage_t,
+    using textual_render_storage_t::textual_render_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    image_block_t, image_block_storage_t,
+    using image_block_storage_t::image_block_storage_t;)
+
+UX_DECLARE_STORAGE_DRAWING_FUNCTION(draw_function_object_t, cairo_function_t,
+                                    void invoke(display_context_t &context);)
+
+// primitives - drawing functions
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(arc_t, arc_storage_t,
+                                          using arc_storage_t::arc_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    negative_arc_t, negative_arc_storage_t,
+    using negative_arc_storage_t::negative_arc_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    curve_t, curve_storage_t, using curve_storage_t::curve_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(line_t, line_storage_t,
+                                          using line_storage_t::line_storage_t;)
+
+UX_DECLARE_STORAGE_DRAWING_FUNCTION(hline_t, double,
+                                    void invoke(display_context_t &context);)
+
+UX_DECLARE_STORAGE_DRAWING_FUNCTION(vline_t, double,
+                                    void invoke(display_context_t &context);)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    rectangle_t, rectangle_storage_t,
+    using rectangle_storage_t::rectangle_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    stroke_path_t, painter_brush_t, using painter_brush_t::painter_brush_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    fill_path_t, painter_brush_t, using painter_brush_t::painter_brush_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    stroke_fill_path_t, stroke_fill_path_storage_t,
+    using stroke_fill_path_storage_t::stroke_fill_path_storage_t;)
+
+UX_DECLARE_CLASS_STORAGE_DRAWING_FUNCTION(
+    mask_t, painter_brush_t, using painter_brush_t::painter_brush_t;)
+
+UX_DECLARE_STORAGE_DRAWING_FUNCTION(paint_t, double,
+                                    void invoke(display_context_t &context);)
+
+UX_DECLARE_MARKER(close_path_t, void invoke(display_context_t &context);)
+
+// event listeners
+UX_DECLARE_CLASS_STORAGE_EMITTER(listener_t, listener_storage_t,
+                                 using listener_storage_t::listener_storage_t;)
+
+UX_DECLARE_EVENT_LISTENER(listen_paint_t)
+UX_DECLARE_EVENT_LISTENER(listen_focus_t)
+UX_DECLARE_EVENT_LISTENER(listen_blur_t)
+UX_DECLARE_EVENT_LISTENER(listen_resize_t)
+UX_DECLARE_EVENT_LISTENER(listen_keydown_t)
+UX_DECLARE_EVENT_LISTENER(listen_keyup_t)
+UX_DECLARE_EVENT_LISTENER(listen_keypress_t)
+UX_DECLARE_EVENT_LISTENER(listen_mouseenter_t)
+UX_DECLARE_EVENT_LISTENER(listen_mousemove_t)
+UX_DECLARE_EVENT_LISTENER(listen_mousedown_t)
+UX_DECLARE_EVENT_LISTENER(listen_mouseup_t)
+UX_DECLARE_EVENT_LISTENER(listen_click_t)
+UX_DECLARE_EVENT_LISTENER(listen_dblclick_t)
+UX_DECLARE_EVENT_LISTENER(listen_contextmenu_t)
+UX_DECLARE_EVENT_LISTENER(listen_wheel_t)
+UX_DECLARE_EVENT_LISTENER(listen_mouseleave_t)
